@@ -1,0 +1,44 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: precificacao-db
+    environment:
+      POSTGRES_DB: precificacao
+      POSTGRES_USER: precificacao
+      POSTGRES_PASSWORD: precificacao123
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U precificacao"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    container_name: precificacao-backend
+    ports:
+      - "8001:8001"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://precificacao:precificacao123@db:5432/precificacao
+      SECRET_KEY: "Realengo@Precificacao#2024"
+    volumes:
+      - /mnt/datalake_realengo:/mnt/datalake_realengo:ro
+      - ./backend/config:/app/config
+    command: "./entrypoint.sh"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: precificacao-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

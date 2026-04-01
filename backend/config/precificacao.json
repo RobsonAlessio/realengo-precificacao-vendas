@@ -1,0 +1,131 @@
+{
+  "_doc": {
+    "descricao": "Arquivo de configuração da tabela de precificação. Edite 'calculos' e 'colunas'. Não altere '_doc' nem 'fontes'.",
+
+    "variaveis_disponiveis": {
+      "meta_frete"      : "Meta de frete por fardo em R$ (custo fixo, ex: 18.72)",
+      "margem_parbo"    : "Margem de contribuição Parbo (decimal — 0.12 = 12%)",
+      "margem_branco"   : "Margem de contribuição Branco (decimal)",
+      "margem_integral" : "Margem de contribuição Integral (decimal)",
+      "comissao"        : "Comissão do representante (decimal — 0.025 = 2.5%)",
+      "embalagem_parbo"    : "Custo embalagem Parbo/Integral (R$/fardo — média 3m, Airflow)",
+      "energia_parbo"      : "Custo energia Parbo/Integral (R$/fardo — média 3m, Airflow)",
+      "embalagem_branco"   : "Custo embalagem Branco (R$/fardo — média 3m, Airflow)",
+      "energia_branco"     : "Custo energia Branco (R$/fardo — média 3m, Airflow)",
+      "embalagem_integral" : "Custo embalagem Integral (R$/fardo — igual ao Parbo)",
+      "energia_integral"   : "Custo energia Integral (R$/fardo — igual ao Parbo)",
+      "imposto"            : "Imposto (decimal — 0.07 = 7%)",
+      "mp_parbo"           : "Custo MP Parbo por fardo 30kg — Empresa 08 (R$/fardo, renda 73%)",
+      "mp_branco"          : "Custo MP Branco por fardo 30kg — Empresa 58 (R$/fardo, renda 73%)",
+      "mp_integral"        : "Custo MP Integral por fardo 30kg — Empresa 08 (R$/fardo, renda 73%)"
+    },
+
+    "formula_preco_fardo": "Preço = (MP + frete + embalagem + energia) / (1 - margem - comissao - imposto)"
+  },
+
+  "fontes": {
+    "fretes": {
+      "endpoint"  : "GET /prices/freight-targets",
+      "descricao" : "Meta de frete (R$/fardo) + margens + comissão + custos fixos por representante",
+      "campos": {
+        "meta_frete"     : "Meta de frete em R$/fardo (custo fixo)",
+        "margem_parbo"   : "Margem contribuição Parbo (decimal)",
+        "margem_branco"  : "Margem contribuição Branco (decimal)",
+        "margem_integral": "Margem contribuição Integral (decimal)",
+        "comissao"       : "Comissão do representante (decimal)",
+        "embalagem_parbo/branco" : "Custo embalagem por fardo por tipo (R$ — média 3m, Airflow)",
+        "energia_parbo/branco"   : "Custo energia por fardo por tipo (R$ — média 3m, Airflow)",
+        "imposto"        : "Imposto (decimal = 0.07)"
+      }
+    },
+    "custo_mp": {
+      "endpoint" : "GET /prices/custo-mp",
+      "descricao": "Custo MP convertido para R$/fardo 30kg com renda 73%",
+      "campos": {
+        "empresa_08.parbo"   : "MP Parbo por fardo — Empresa 08",
+        "empresa_08.integral": "MP Integral por fardo — Empresa 08",
+        "empresa_58.branco"  : "MP Branco por fardo — Empresa 58",
+        "data"               : "Data de referência (YYYY-MM-DD)"
+      }
+    }
+  },
+
+  "calculos": [
+    {
+      "id"     : "preco_fardo_parbo",
+      "label"  : "Preço Fardo",
+      "formula": "(mp_parbo + meta_frete + embalagem_parbo + energia_parbo) / (1 - margem_parbo - comissao - imposto)",
+      "formato": "moeda",
+      "grupo"  : "Parbo",
+      "ativo"  : true,
+      "variaveis": [
+        {"campo": "mp_parbo",          "label": "MP (fardo)",  "formato": "moeda", "campo_sc": "mp_parbo_sc"},
+        {"campo": "meta_frete",        "label": "Frete",       "formato": "moeda"},
+        {"campo": "embalagem_parbo",   "label": "Embalagem",   "formato": "moeda"},
+        {"campo": "energia_parbo",     "label": "Energia",     "formato": "moeda"},
+        {"campo": "margem_parbo",      "label": "Margem",      "formato": "percentual"},
+        {"campo": "comissao",          "label": "Comissão",    "formato": "percentual"},
+        {"campo": "imposto",           "label": "Imposto",     "formato": "percentual"}
+      ]
+    },
+    {
+      "id"     : "preco_fardo_branco",
+      "label"  : "Preço Fardo",
+      "formula": "(mp_branco + meta_frete + embalagem_branco + energia_branco) / (1 - margem_branco - comissao - imposto)",
+      "formato": "moeda",
+      "grupo"  : "Branco",
+      "ativo"  : true,
+      "variaveis": [
+        {"campo": "mp_branco",         "label": "MP (fardo)", "formato": "moeda", "campo_sc": "mp_branco_sc"},
+        {"campo": "meta_frete",        "label": "Frete",      "formato": "moeda"},
+        {"campo": "embalagem_branco",  "label": "Embalagem",  "formato": "moeda"},
+        {"campo": "energia_branco",    "label": "Energia",    "formato": "moeda"},
+        {"campo": "margem_branco",     "label": "Margem",     "formato": "percentual"},
+        {"campo": "comissao",          "label": "Comissão",   "formato": "percentual"},
+        {"campo": "imposto",           "label": "Imposto",    "formato": "percentual"}
+      ]
+    },
+    {
+      "id"     : "preco_fardo_integral",
+      "label"  : "Preço Fardo",
+      "formula": "(mp_integral + meta_frete + embalagem_integral + energia_integral) / (1 - margem_integral - comissao - imposto)",
+      "formato": "moeda",
+      "grupo"  : "Integral",
+      "ativo"  : true,
+      "variaveis": [
+        {"campo": "mp_integral",         "label": "MP (fardo)", "formato": "moeda", "campo_sc": "mp_integral_sc"},
+        {"campo": "meta_frete",          "label": "Frete",      "formato": "moeda"},
+        {"campo": "embalagem_integral",  "label": "Embalagem",  "formato": "moeda"},
+        {"campo": "energia_integral",    "label": "Energia",    "formato": "moeda"},
+        {"campo": "margem_integral",     "label": "Margem",     "formato": "percentual"},
+        {"campo": "comissao",            "label": "Comissão",   "formato": "percentual"},
+        {"campo": "imposto",             "label": "Imposto",    "formato": "percentual"}
+      ]
+    }
+  ],
+
+  "colunas": [
+    { "campo": "representante",   "label": "Representante", "visivel": true,  "formato": "texto",      "grupo": null       },
+    { "campo": "meta_frete",      "label": "Frete",         "visivel": false, "formato": "moeda",      "grupo": "Parbo"    },
+    { "campo": "comissao",        "label": "Comissão",      "visivel": false, "formato": "percentual", "grupo": "Parbo"    },
+    { "campo": "margem_parbo",    "label": "Margem",        "visivel": false, "formato": "percentual", "grupo": "Parbo"    },
+    { "campo": "embalagem_parbo",  "label": "Embalagem",     "visivel": false, "formato": "moeda",      "grupo": "Parbo"    },
+    { "campo": "energia_parbo",   "label": "Energia",       "visivel": false, "formato": "moeda",      "grupo": "Parbo"    },
+    { "campo": "imposto",         "label": "Imposto",       "visivel": false, "formato": "percentual", "grupo": "Parbo"    },
+    { "campo": "mp_parbo",        "label": "MP (fardo)",    "visivel": false, "formato": "moeda",      "grupo": "Parbo"    },
+    { "campo": "meta_frete",      "label": "Frete",         "visivel": false, "formato": "moeda",      "grupo": "Branco"   },
+    { "campo": "comissao",        "label": "Comissão",      "visivel": false, "formato": "percentual", "grupo": "Branco"   },
+    { "campo": "margem_branco",   "label": "Margem",        "visivel": false, "formato": "percentual", "grupo": "Branco"   },
+    { "campo": "embalagem_branco", "label": "Embalagem",     "visivel": false, "formato": "moeda",      "grupo": "Branco"   },
+    { "campo": "energia_branco",  "label": "Energia",       "visivel": false, "formato": "moeda",      "grupo": "Branco"   },
+    { "campo": "imposto",         "label": "Imposto",       "visivel": false, "formato": "percentual", "grupo": "Branco"   },
+    { "campo": "mp_branco",       "label": "MP (fardo)",    "visivel": false, "formato": "moeda",      "grupo": "Branco"   },
+    { "campo": "meta_frete",      "label": "Frete",         "visivel": false, "formato": "moeda",      "grupo": "Integral" },
+    { "campo": "comissao",        "label": "Comissão",      "visivel": false, "formato": "percentual", "grupo": "Integral" },
+    { "campo": "margem_integral", "label": "Margem",        "visivel": false, "formato": "percentual", "grupo": "Integral" },
+    { "campo": "embalagem_integral", "label": "Embalagem",   "visivel": false, "formato": "moeda",      "grupo": "Integral" },
+    { "campo": "energia_integral",   "label": "Energia",     "visivel": false, "formato": "moeda",      "grupo": "Integral" },
+    { "campo": "imposto",         "label": "Imposto",       "visivel": false, "formato": "percentual", "grupo": "Integral" },
+    { "campo": "mp_integral",     "label": "MP (fardo)",    "visivel": false, "formato": "moeda",      "grupo": "Integral" }
+  ]
+}
