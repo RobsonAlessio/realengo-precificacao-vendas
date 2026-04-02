@@ -14,16 +14,15 @@ router = APIRouter(prefix="/prices", tags=["prices"])
 
 def _montar_rows_do_bd(db: Session) -> tuple[list[dict], str]:
     """
-    Retorna (rows, mes_atual) com apenas os representantes que possuem
-    parâmetros vigentes no mês atual (até hoje) na tabela parametros_representante.
+    Retorna (rows, mes_atual) com os representantes que possuem parâmetros
+    vigentes no mês atual. Retorna lista vazia se não houver dados cadastrados.
     Comissão é lida de fat_representante.parquet.
     """
     hoje = date.today()
-    mes_atual = hoje.strftime("%Y-%m")
     comissoes = get_comissoes()
     icms_map  = representantes_service.get_icms_por_representante(hoje.year, hoje.month)
 
-    # Representantes com pelo menos um registro no mês atual (até hoje)
+    mes_ref = hoje.strftime("%Y-%m")
     reps_bd = (
         db.query(models.ParametroRepresentante.representante)
         .filter(
@@ -35,16 +34,17 @@ def _montar_rows_do_bd(db: Session) -> tuple[list[dict], str]:
         .all()
     )
 
+    if not reps_bd:
+        return [], mes_ref
+
     result = []
     for (rep_name,) in reps_bd:
-        # Registro mais recente do mês atual até hoje
         params = (
             db.query(models.ParametroRepresentante)
             .filter(
                 models.ParametroRepresentante.representante == rep_name,
-                extract("year",  models.ParametroRepresentante.data_vigencia) == hoje.year,
-                extract("month", models.ParametroRepresentante.data_vigencia) == hoje.month,
-                models.ParametroRepresentante.data_vigencia <= hoje,
+                extract("year",  models.ParametroRepresentante.data_vigencia) == ano_ref,
+                extract("month", models.ParametroRepresentante.data_vigencia) == mes_ref_num,
             )
             .order_by(models.ParametroRepresentante.data_vigencia.desc())
             .first()
@@ -53,14 +53,14 @@ def _montar_rows_do_bd(db: Session) -> tuple[list[dict], str]:
             continue
 
         row: dict = {
-            "representante":       rep_name,
-            "meta_frete":          float(params.meta_frete_1),
-            "margem_parbo":        float(params.margem_parbo)    if params.margem_parbo    is not None else None,
-            "margem_branco":       float(params.margem_branco)   if params.margem_branco   is not None else None,
-            "margem_integral":     float(params.margem_integral) if params.margem_integral is not None else None,
-            "comissao":            comissoes.get(rep_name),
-            "imposto":             icms_map.get(str(params.codigo_representante)),
-            "mes":                 mes_atual,
+            "representante":        rep_name,
+            "meta_frete":           float(params.meta_frete_1),
+            "margem_parbo":         float(params.margem_parbo)    if params.margem_parbo    is not None else None,
+            "margem_branco":        float(params.margem_branco)   if params.margem_branco   is not None else None,
+            "margem_integral":      float(params.margem_integral) if params.margem_integral is not None else None,
+            "comissao":             comissoes.get(rep_name),
+            "imposto":              icms_map.get(str(params.codigo_representante)),
+            "mes":                  mes_ref,
             "codigo_representante": params.codigo_representante,
         }
         if params.meta_frete_2 is not None:
@@ -70,7 +70,7 @@ def _montar_rows_do_bd(db: Session) -> tuple[list[dict], str]:
 
         result.append(row)
 
-    return result, mes_atual
+    return result, mes_ref
 
 
 @router.get("/custo-mp")
@@ -84,12 +84,13 @@ def tabela(
     db: Session = Depends(get_db),
 ):
     """
-    Retorna tabela completa: apenas representantes com parâmetros no BD para o mês atual.
+    Retorna tabela completa de precificação.
+    Usa mês atual se houver parâmetros; senão usa o mês mais recente do BD.
     Cálculos ativos conforme config/precificacao.json.
     Resposta: { colunas, calculos_ativos, dados, custo_mp, custo_producao, mes }
     """
     config = load_config()
-    rows, mes_atual = _montar_rows_do_bd(db)
+    rows, mes_ref = _montar_rows_do_bd(db)
     mp = get_custo_mp()
     custo_prod = _get_custo_producao()
 
@@ -129,7 +130,7 @@ def tabela(
         "dados"           : rows,
         "custo_mp"        : mp,
         "custo_producao"  : custo_prod,
-        "mes"             : mes_atual,
+        "mes"             : mes_ref,
     }
 
 

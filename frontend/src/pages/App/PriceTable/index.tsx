@@ -3,7 +3,7 @@ import {
   Table, Button, Alert, Space, Typography, Spin, Tag,
   Tooltip, Popover, Divider,
 } from 'antd'
-import { ReloadOutlined, InfoCircleOutlined } from '@ant-design/icons'
+import { ReloadOutlined, InfoCircleOutlined, WarningOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import api from '../../../api/client'
 
@@ -316,6 +316,12 @@ export default function PriceTable() {
     ? buildColumns(tabela.colunas, tabela.calculos_ativos, tabela.dados)
     : []
 
+  // Avisos de MP e custo de produção para exibir como ícone inline nas tags
+  const avisoMp = tabela?.custo_mp?.aviso ?? null
+  const avisoProd = tabela?.custo_producao?.aviso ?? null
+
+  const semDados = tabela !== null && tabela.dados.length === 0
+
   return (
     <div style={{
       background: '#ffffff',
@@ -328,11 +334,27 @@ export default function PriceTable() {
         <Space wrap align="center">
           <Title level={4} style={{ margin: 0 }}>Tabela de Preços por Representante</Title>
           {tabela?.mes && <Tag color="blue">{tabela.mes}</Tag>}
-          {tabela?.custo_mp?.data && <Tag color="default">MP ref.: {tabela.custo_mp.data}</Tag>}
+          {tabela?.custo_mp?.data && (
+            <Space size={4}>
+              <Tag color="default">MP ref.: {tabela.custo_mp.data}</Tag>
+              {avisoMp && (
+                <Tooltip title={avisoMp}>
+                  <WarningOutlined style={{ color: '#d97706', fontSize: 13, cursor: 'default' }} />
+                </Tooltip>
+              )}
+            </Space>
+          )}
           {tabela?.custo_producao?.parbo_integral && (
-            <Tooltip title={`Parbo/Integral: emb R$${tabela.custo_producao.parbo_integral.embalagem_por_fardo.toFixed(4)}/fardo · ene R$${tabela.custo_producao.parbo_integral.energia_por_fardo.toFixed(4)}/fardo | Branco: emb R$${tabela.custo_producao.branco?.embalagem_por_fardo.toFixed(4)}/fardo · ene R$${tabela.custo_producao.branco?.energia_por_fardo.toFixed(4)}/fardo`}>
-              <Tag color="cyan">Custos prod.: {tabela.custo_producao.parbo_integral.periodo_referencia}</Tag>
-            </Tooltip>
+            <Space size={4}>
+              <Tooltip title={`Parbo/Integral: emb R$${tabela.custo_producao.parbo_integral.embalagem_por_fardo.toFixed(4)}/fardo · ene R$${tabela.custo_producao.parbo_integral.energia_por_fardo.toFixed(4)}/fardo | Branco: emb R$${tabela.custo_producao.branco?.embalagem_por_fardo.toFixed(4)}/fardo · ene R$${tabela.custo_producao.branco?.energia_por_fardo.toFixed(4)}/fardo`}>
+                <Tag color="cyan">Custos prod.: {tabela.custo_producao.parbo_integral.periodo_referencia}</Tag>
+              </Tooltip>
+              {avisoProd && (
+                <Tooltip title={avisoProd}>
+                  <WarningOutlined style={{ color: '#d97706', fontSize: 13, cursor: 'default' }} />
+                </Tooltip>
+              )}
+            </Space>
           )}
           {tabela?.calculos_ativos.length ? (
             <Tag color="green">{tabela.calculos_ativos.length} cálculo(s) ativo(s)</Tag>
@@ -343,11 +365,14 @@ export default function PriceTable() {
         </Button>
       </Space>
 
-      {tabela?.custo_mp?.aviso && (
-        <Alert message={tabela.custo_mp.aviso} type="warning" showIcon style={{ marginBottom: 12 }} />
-      )}
-      {tabela?.custo_producao?.aviso && (
-        <Alert message={tabela.custo_producao.aviso} type="warning" showIcon style={{ marginBottom: 12 }} />
+      {semDados && !error && (
+        <Alert
+          type="warning"
+          showIcon
+          message={`Nenhum parâmetro cadastrado para ${tabela?.mes}.`}
+          description="Acesse a aba Parâmetros para importar ou cadastrar os representantes do mês atual."
+          style={{ marginBottom: 12 }}
+        />
       )}
       {error && (
         <Alert message="Erro ao carregar dados" description={error} type="error" showIcon

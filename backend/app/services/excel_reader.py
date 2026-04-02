@@ -14,6 +14,14 @@ PARQUET_PATH_CUSTO_MP = os.getenv(
     "PARQUET_CUSTO_MP_PATH",
     f"{_QLIK_BRONZE}/extracao_planilhas/custo_materia_prima/custo_materia_prima.parquet",
 )
+PARQUET_PATH_META_FRETES = os.getenv(
+    "PARQUET_PATH_META_FRETES",
+    f"{_QLIK_BRONZE}/extracao_planilhas/meta_fretes/meta_fretes.parquet",
+)
+PARQUET_PATH_MARGENS_REP = os.getenv(
+    "PARQUET_PATH_MARGENS_REP",
+    f"{_QLIK_BRONZE}/extracao_planilhas/margens_representante/margens_representante.parquet",
+)
 
 # Parquet da camada silver com indicadores de laudo (inclui Renda do Processo)
 PARQUET_DIR_INDICADORES_LAUDOS = os.getenv(
@@ -41,6 +49,84 @@ _KG_SACO = 50
 _KG_FARDO = 30
 
 
+def _safe_float(val):
+    if val is None:
+        return None
+    if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def load_fretes() -> pd.DataFrame:
+    """
+    Carrega meta_fretes.parquet e normaliza colunas de datas para YYYY-MM.
+    Retorna DataFrame com colunas [Representante, 'YYYY-MM', 'YYYY-MM', ...]
+    Fonte: bronze/extracao_planilhas/meta_fretes/meta_fretes.parquet
+    """
+    df = pd.read_parquet(PARQUET_PATH_META_FRETES, engine="pyarrow")
+    # Renomeia colunas de "YYYY-MM-DD" para "YYYY-MM"
+    rename = {col: str(col)[:7] for col in df.columns if col != "Representante"}
+    df = df.rename(columns=rename)
+    df["Representante"] = df["Representante"].astype(str).str.strip().str.upper()
+    return df
+
+
+def load_margens(mes_str: str) -> pd.DataFrame:
+    """
+    Carrega margens_representante.parquet para o mês informado (formato YYYY-MM).
+    Retorna DataFrame com colunas [Representante, margem_parbo, margem_branco, margem_integral].
+    Retorna DataFrame vazio se o mês não estiver disponível no parquet.
+
+    Estrutura do parquet (raw do Excel):
+      linha 0: ignorada
+      linha 1: datas por grupo (ex: "2026-01-01 00:00:00", None, None, "2026-02-01...", ...)
+      linha 2: cabeçalhos (Representante, Parbo, Branco, Integral, Parbo, Branco, Integral, ...)
+      linhas 3-N-1: dados dos representantes
+      última linha: MÉDIA (excluída)
+    """
+    df_raw = pd.read_parquet(PARQUET_PATH_MARGENS_REP, engine="pyarrow")
+    col_names = list(df_raw.columns)
+    date_row = df_raw.iloc[1]
+
+    # Localiza o índice da coluna Parbo correspondente ao mês solicitado
+    parbo_col_idx = None
+    for idx, col in enumerate(col_names):
+        val = date_row[col]
+        if val is None or str(val) in ("None", "nan", "NaT"):
+            continue
+        try:
+            if str(val)[:7] == mes_str:
+                parbo_col_idx = idx
+                break
+        except Exception:
+            continue
+
+    if parbo_col_idx is None:
+        return pd.DataFrame()
+
+    rep_col      = col_names[1]
+    parbo_col    = col_names[parbo_col_idx]
+    branco_col   = col_names[parbo_col_idx + 1]
+    integral_col = col_names[parbo_col_idx + 2]
+
+    # Dados: linha 3 em diante, excluindo a última linha (MÉDIA)
+    data_rows = df_raw.iloc[3:-1]
+
+    result = pd.DataFrame({
+        "Representante":  data_rows[rep_col].astype(str).str.strip().str.upper(),
+        "margem_parbo":   data_rows[parbo_col].apply(_safe_float),
+        "margem_branco":  data_rows[branco_col].apply(_safe_float),
+        "margem_integral": data_rows[integral_col].apply(_safe_float),
+    })
+
+    return result[
+        result["Representante"].notna() & (result["Representante"] != "NAN")
+    ].reset_index(drop=True)
+
+
 def get_renda_processo(ano: int, mes: int) -> dict[str, float]:
     """
     Calcula a Renda do Processo média do mês/ano a partir do parquet
@@ -56,18 +142,42 @@ def get_renda_processo(ano: int, mes: int) -> dict[str, float]:
 
     Retorna dict {'parbo': float|None, 'integral': float|None, 'branco': float|None,
     'aviso': str|None} em decimal (ex: 0.7191 = 71,91%).
-    Se o parquet do mês não existir, retorna None nos valores e um aviso descritivo.
+    Se o parquet do mês não existir, tenta os 2 meses anteriores antes de retornar None.
     """
-    nome = f"indicadores_laudos_{ano:04d}_{mes:02d}_01.parquet"
-    caminho = os.path.join(PARQUET_DIR_INDICADORES_LAUDOS, nome)
+    # Tenta o mês solicitado e, se não existir, busca até 2 meses anteriores
+    caminho = None
+    ref_ano, ref_mes = ano, mes
+    for delta in range(3):
+        a, m = ano, mes - delta
+        while m <= 0:
+            m += 12
+            a -= 1
+        candidato = os.path.join(
+            PARQUET_DIR_INDICADORES_LAUDOS,
+            f"indicadores_laudos_{a:04d}_{m:02d}_01.parquet",
+        )
+        if os.path.exists(candidato):
+            caminho = candidato
+            ref_ano, ref_mes = a, m
+            break
 
-    if not os.path.exists(caminho):
+    if caminho is None:
         return {
             "parbo":    None,
             "integral": None,
             "branco":   None,
-            "aviso":    f"Parquet de laudos não encontrado: {caminho}. Verifique a DAG extract_planilhas.",
+            "aviso":    (
+                f"Parquet de laudos não encontrado para {ano}-{mes:02d} "
+                f"nem nos 2 meses anteriores. Verifique a DAG extract_planilhas."
+            ),
         }
+
+    aviso_fallback = None
+    if (ref_ano, ref_mes) != (ano, mes):
+        aviso_fallback = (
+            f"Parquet de laudos de {ano}-{mes:02d} ainda não disponível. "
+            f"Usando referência de {ref_ano}-{ref_mes:02d}."
+        )
 
     df = pd.read_parquet(caminho, engine="pyarrow")
 
@@ -90,7 +200,7 @@ def get_renda_processo(ano: int, mes: int) -> dict[str, float]:
         "parbo":    round(renda_parbo, 6),
         "integral": round(renda_parbo, 6),  # INTEGRAL usa mesma renda do PARBO (Empresa 8)
         "branco":   round(renda_branco, 6),
-        "aviso":    None,
+        "aviso":    aviso_fallback,
     }
 
 
@@ -99,17 +209,6 @@ def _mp_sc_para_fardo(val_sc: float | None, renda: float | None) -> float | None
     if val_sc is None or renda is None:
         return None
     return round(val_sc * _KG_FARDO / (renda * _KG_SACO), 2)
-
-
-def _safe_float(val):
-    if val is None:
-        return None
-    if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
-        return None
-    try:
-        return float(val)
-    except (TypeError, ValueError):
-        return None
 
 
 def get_comissoes() -> dict[str, float | None]:

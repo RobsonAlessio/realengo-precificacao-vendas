@@ -25,6 +25,8 @@ def get_parametros(
     """
     Retorna parâmetros do BD para o mês/ano informado.
     Cada representante ativo é incluído com seus registros do BD.
+    Representantes com registros no BD mas não mais na lista de ativos
+    também são incluídos (ex: inativos ou com nome renomeado).
     """
     now = datetime.now()
     ano = ano or now.year
@@ -38,17 +40,37 @@ def get_parametros(
     for p in db_params:
         params_by_rep[p.representante].append(p)
 
-    return schemas.ParametrosResponse(
-        mes=mes_str,
-        representantes=[
+    # Representantes ativos (com ou sem registros no BD para o mês)
+    seen_reps: set[str] = set()
+    representantes = []
+    for ativo in ativos:
+        fantasia = ativo["fantasia"]
+        representantes.append(
             schemas.RepresentanteComParams(
                 codigo=ativo["codigo"],
-                representante=ativo["fantasia"],
-                parametros=params_by_rep.get(ativo["fantasia"], []),
+                representante=fantasia,
+                parametros=params_by_rep.get(fantasia, []),
                 fallback_parquet=None,
             )
-            for ativo in ativos
-        ],
+        )
+        seen_reps.add(fantasia)
+
+    # Representantes presentes no BD mas não mais na lista de ativos
+    # (ex: inativos, nome alterado no ERP — garantem que dados históricos apareçam)
+    for rep_name, params in params_by_rep.items():
+        if rep_name not in seen_reps:
+            representantes.append(
+                schemas.RepresentanteComParams(
+                    codigo=params[0].codigo_representante if params else None,
+                    representante=rep_name,
+                    parametros=params,
+                    fallback_parquet=None,
+                )
+            )
+
+    return schemas.ParametrosResponse(
+        mes=mes_str,
+        representantes=representantes,
     )
 
 

@@ -29,6 +29,12 @@ interface TabelaResponse {
   custo_producao: any
   mes: string | null
 }
+interface RepAtivo {
+  codigo: number | null
+  fantasia: string
+  comissao: number | null
+  imposto: number | null
+}
 
 function fmt(n: number | null | undefined, type: 'moeda' | 'percentual' = 'moeda'): string {
   if (n == null || isNaN(n)) return '—'
@@ -39,6 +45,7 @@ function fmt(n: number | null | undefined, type: 'moeda' | 'percentual' = 'moeda
 
 export default function SalesSimulator() {
   const [tabela, setTabela] = useState<TabelaResponse | null>(null)
+  const [ativos, setAtivos] = useState<RepAtivo[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -46,18 +53,22 @@ export default function SalesSimulator() {
   const [selectedCalcId, setSelectedCalcId] = useState<string | null>(null)
   const [formValues, setFormValues] = useState<Record<string, number>>({})
   const [custoAdicional, setCustoAdicional] = useState<number>(0)
-  
+
   // Controla o valor digitado diretamente no preço final.
   const [manualFinalPrice, setManualFinalPrice] = useState<number | null>(null)
 
   // 1. Fetch
   useEffect(() => {
     setLoading(true)
-    api.get<TabelaResponse>('/prices/tabela')
-      .then(res => {
-        setTabela(res.data)
-        if (res.data.calculos_ativos?.length) {
-          setSelectedCalcId(res.data.calculos_ativos[0].id)
+    Promise.all([
+      api.get<TabelaResponse>('/prices/tabela'),
+      api.get<RepAtivo[]>('/representantes/ativos'),
+    ])
+      .then(([tabelaRes, ativosRes]) => {
+        setTabela(tabelaRes.data)
+        setAtivos(ativosRes.data || [])
+        if (tabelaRes.data.calculos_ativos?.length) {
+          setSelectedCalcId(tabelaRes.data.calculos_ativos[0].id)
         }
       })
       .catch(err => setError(err?.response?.data?.detail || err.message))
@@ -79,24 +90,62 @@ export default function SalesSimulator() {
     return calcDef.variaveis.find(v => v.campo.includes('margem'))?.campo || null
   }, [calcDef])
 
+  // Mapas {fantasia: valor} dos representantes ativos (parquet)
+  const comissaoByRep = useMemo((): Record<string, number> => {
+    const map: Record<string, number> = {}
+    ativos.forEach(a => { if (a.comissao != null) map[a.fantasia] = a.comissao })
+    return map
+  }, [ativos])
+
+  const impostoByRep = useMemo((): Record<string, number> => {
+    const map: Record<string, number> = {}
+    ativos.forEach(a => { if (a.imposto != null) map[a.fantasia] = a.imposto })
+    return map
+  }, [ativos])
+
+  // Custos globais (MP, embalagem, energia) derivados diretamente do tabela,
+  // usados como baseline quando o representante não tem dados no BD.
+  const globalCosts = useMemo((): Record<string, any> => {
+    if (!tabela) return {}
+    const mp = tabela.custo_mp
+    const cp = tabela.custo_producao
+    const pi = cp?.parbo_integral || {}
+    const br = cp?.branco || {}
+    return {
+      mp_parbo:           mp?.empresa_08?.parbo,
+      mp_parbo_sc:        mp?.empresa_08?.parbo_sc,
+      mp_branco:          mp?.empresa_58?.branco,
+      mp_branco_sc:       mp?.empresa_58?.branco_sc,
+      mp_integral:        mp?.empresa_08?.integral,
+      mp_integral_sc:     mp?.empresa_08?.integral_sc,
+      embalagem_parbo:    pi?.embalagem_por_fardo,
+      energia_parbo:      pi?.energia_por_fardo,
+      embalagem_branco:   br?.embalagem_por_fardo,
+      energia_branco:     br?.energia_por_fardo,
+      embalagem_integral: pi?.embalagem_por_fardo,
+      energia_integral:   pi?.energia_por_fardo,
+    }
+  }, [tabela])
+
   // 3. Efeitos
   // Quando muda o Representante ou o Cálculo, zera o input manual e repopula as variáveis.
   useEffect(() => {
     if (!calcDef || !tabela) return
     const newValues: Record<string, number> = {}
-    
-    // Tenta usar o representante selecionado; senão, usa a linha 0 só para herdar custos globais (MP, embalagem)
-    const baseline = repData || tabela.dados[0] || {}
 
     calcDef.variaveis?.forEach(v => {
       let val = 0
       if (repData) {
         val = Number(repData[v.campo])
       } else {
-        // Sem representante: preenchemos apenas os valores globais do sistema.
+        // Sem dados do rep no BD: preenche globais (MP, embalagem, energia) e comissão do cadastro.
         const isGlobal = v.campo.startsWith('mp_') || v.campo.startsWith('embalagem_') || v.campo.startsWith('energia_')
         if (isGlobal) {
-          val = Number(baseline[v.campo])
+          val = Number(globalCosts[v.campo])
+        } else if (v.campo === 'comissao' && selectedRep) {
+          val = comissaoByRep[selectedRep] ?? 0
+        } else if (v.campo === 'imposto' && selectedRep) {
+          val = impostoByRep[selectedRep] ?? 0
         }
       }
       if (isNaN(val)) val = 0
@@ -106,7 +155,7 @@ export default function SalesSimulator() {
     setFormValues(newValues)
     setManualFinalPrice(null)
     setCustoAdicional(0)
-  }, [selectedRep, calcDef, repData, tabela])
+  }, [selectedRep, calcDef, repData, tabela, globalCosts, comissaoByRep, impostoByRep])
 
   // 4. Lógica de Simulador
   const { somaFixos, somaPcts } = useMemo(() => {
@@ -139,12 +188,12 @@ export default function SalesSimulator() {
 
   const handleFinalPriceChange = (val: number | null) => {
     if (!val || !margemKey) return
-    
+
     // Matemática inversa:
     // finalPrice = somaFixos / (1 - (outrosPcts + novaMargem))
     // 1 - outrosPcts - novaMargem = somaFixos / finalPrice
     // novaMargem = 1 - (somaFixos / val) - outrosPcts
-    
+
     const margemAtual = formValues[margemKey] || 0
     const outrosPcts = somaPcts - margemAtual
     const novaMargem = 1 - (somaFixos / val) - outrosPcts
@@ -154,10 +203,19 @@ export default function SalesSimulator() {
   }
 
   // 5. Render
-  const reps = tabela?.dados.map(d => ({
-    label: d.codigo_representante ? `${d.codigo_representante} - ${d.representante}` : d.representante,
-    value: d.representante
-  })) || []
+  // Lista de representantes: usa ativos do parquet; fallback para tabela.dados se ativos vazio.
+  const reps = useMemo(() => {
+    if (ativos.length > 0) {
+      return ativos.map(a => ({
+        label: a.codigo ? `${a.codigo} - ${a.fantasia}` : a.fantasia,
+        value: a.fantasia,
+      }))
+    }
+    return tabela?.dados.map(d => ({
+      label: d.codigo_representante ? `${d.codigo_representante} - ${d.representante}` : d.representante,
+      value: d.representante,
+    })) || []
+  }, [ativos, tabela])
 
   const varsFixais = calcDef?.variaveis?.filter(v => v.formato !== 'percentual') || []
   const varsPcts = calcDef?.variaveis?.filter(v => v.formato === 'percentual') || []
@@ -217,7 +275,7 @@ export default function SalesSimulator() {
               {varsFixais.map(v => {
                 const hasFretesExtras = v.campo === 'meta_frete' && repData && (repData.meta_frete_2 || repData.meta_frete_3);
                 const isMP = v.campo.startsWith('mp_');
-                
+
                 // Conversão Saco (50kg) <-> Fardo (30kg) p/ MP
                 let renda = 0.73;
                 if (isMP) {
@@ -244,7 +302,7 @@ export default function SalesSimulator() {
                         </Space>
                       )}
                     </div>
-                    
+
                     {isMP ? (
                       <Row gutter={8}>
                         <Col span={12}>
@@ -357,10 +415,10 @@ export default function SalesSimulator() {
             <InputNumber
               prefix="R$"
               size="large"
-              style={{ 
-                width: 250, 
-                fontSize: 32, 
-                fontWeight: 600, 
+              style={{
+                width: 250,
+                fontSize: 32,
+                fontWeight: 600,
                 color: '#237804',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
               }}
@@ -375,7 +433,7 @@ export default function SalesSimulator() {
                 <InfoCircleOutlined /> Altere este valor para deduzir qual seria a <strong style={{color: '#1677ff'}}>Margem</strong> resultante da operação.
               </Text>
             </div>
-            
+
             {!manualFinalPrice && (
               <div style={{ marginTop: 16, borderTop: '1px dashed #b7eb8f', paddingTop: 16, maxWidth: 400, margin: '16px auto 0' }}>
                 <Text strong style={{ color: '#52c41a' }}>Prova Real:</Text><br/>
