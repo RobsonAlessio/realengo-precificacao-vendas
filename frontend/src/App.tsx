@@ -1,7 +1,10 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuthStore } from './store/authStore'
-import LoginPage from './pages/Login'
-import AppLayout from './pages/App'
+import LoginPage from './pages/login/LoginPage'
+import AppLayout from './layouts/AppLayout'
+import PricesPage from './pages/prices/PricesPage'
+import SimulatorPage from './pages/simulator/SimulatorPage'
+import ParamsPage from './pages/params/ParamsPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token)
@@ -13,14 +16,19 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route
-        path="/app/*"
+        path="/app"
         element={
           <ProtectedRoute>
             <AppLayout />
           </ProtectedRoute>
         }
-      />
-      <Route path="*" element={<Navigate to="/app" replace />} />
+      >
+        <Route index element={<Navigate to="prices" replace />} />
+        <Route path="prices" element={<PricesPage />} />
+        <Route path="simulator" element={<SimulatorPage />} />
+        <Route path="params" element={<ParamsPage />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/app/prices" replace />} />
     </Routes>
   )
 }

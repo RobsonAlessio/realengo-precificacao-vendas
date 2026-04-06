@@ -3,6 +3,10 @@ export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        outfit: ['Outfit', 'sans-serif'],
+        sans:   ['Inter', 'sans-serif'],
+      },
       colors: {
         primary: {
           50:  '#e8f0fb',
@@ -11,12 +15,12 @@ export default {
           600: '#17407a',
           700: '#10316b',
           900: '#0a1f4a',
-        }
-      }
+        },
+      },
     }
   },
   corePlugins: {
     preflight: false,
   },
-  prefix: 'tw-',
+  // Prefixo removido — usando Tailwind puro (sem tw-)
 }
