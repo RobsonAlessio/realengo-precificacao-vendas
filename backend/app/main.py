@@ -1,18 +1,35 @@
-from fastapi import FastAPI
+import os
+import logging
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.limiter import limiter
 from app.database import Base, engine, SessionLocal
 from app import models
 from app.auth import hash_password
 from app.routes import auth, prices, config, representantes, admin
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="Precificação de Vendas Realengo", version="1.0.0")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+_raw_origins = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:3000,http://localhost:5173,http://192.168.0.236:3000,https://precificacao.realengo.com.br",
+)
+ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+    max_age=3600,
 )
 
 app.include_router(auth.router)
@@ -30,24 +47,28 @@ def startup():
 
     db = SessionLocal()
     try:
-        # Cria usuário admin padrão se não existir
         admin_user = db.query(models.User).filter(models.User.username == "admin").first()
         if not admin_user:
+            initial_password = os.getenv("ADMIN_INITIAL_PASSWORD")
+            if not initial_password:
+                raise RuntimeError(
+                    "ADMIN_INITIAL_PASSWORD não definida. "
+                    "Configure esta variável no .env antes de iniciar o servidor."
+                )
             admin_user = models.User(
                 username="admin",
-                hashed_password=hash_password("admin123"),
+                hashed_password=hash_password(initial_password),
                 is_active=True,
                 role="admin",
+                auth_provider="local",
             )
             db.add(admin_user)
             db.commit()
-            print("Usuário admin criado com senha padrão: admin123")
+            logger.info("Usuário admin criado com sucesso.")
         elif not admin_user.role:
-            # Se admin não tem role, atribui agora
             admin_user.role = "admin"
             db.commit()
-            print("Role admin atribuído ao usuário admin")
-
+            logger.info("Role admin atribuído ao usuário admin.")
     finally:
         db.close()
 

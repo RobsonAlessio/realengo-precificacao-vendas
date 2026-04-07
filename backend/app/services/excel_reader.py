@@ -1,8 +1,11 @@
 import os
 import math
+import logging
 import pandas as pd
 from datetime import datetime
 from fastapi import HTTPException
+
+logger = logging.getLogger(__name__)
 
 # fat_representante: usado para comissões e lista de ativos
 _QLIK_BRONZE = "/mnt/datalake_realengo/bronze"
@@ -251,7 +254,8 @@ def get_custo_mp() -> dict:
     """
     try:
         if not os.path.exists(PARQUET_PATH_CUSTO_MP):
-            raise HTTPException(status_code=503, detail=f"Parquet não encontrado: {PARQUET_PATH_CUSTO_MP}. Execute a DAG extract_planilhas.")
+            logger.error("Parquet de custo MP não encontrado: %s", PARQUET_PATH_CUSTO_MP)
+            raise HTTPException(status_code=503, detail="Dados de custo indisponíveis. Contate o administrador.")
         raw = pd.read_parquet(PARQUET_PATH_CUSTO_MP, engine="pyarrow")
         raw.columns = [int(c) for c in raw.columns]
 
@@ -304,5 +308,8 @@ def get_custo_mp() -> dict:
 
     except HTTPException:
         raise
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao ler custo MP: {str(e)}")
+        logger.error("Erro ao ler custo MP: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Erro ao processar dados. Contate o administrador.")

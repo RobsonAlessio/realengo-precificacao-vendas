@@ -1,4 +1,6 @@
 import os
+import re
+import logging
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -8,7 +10,12 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models
 
-SECRET_KEY = os.getenv("SECRET_KEY", "chave-secreta-trocar-em-producao")
+logger = logging.getLogger(__name__)
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY não definida. Configure esta variável no .env.")
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 horas
 
@@ -17,6 +24,9 @@ AD_DOMAIN = os.getenv("AD_DOMAIN", "arrozrealengo.local")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+# Padrão seguro: apenas letras, números, ponto, hífen e underscore
+_USERNAME_RE = re.compile(r"^[a-zA-Z0-9._\-]{1,64}$")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
@@ -29,6 +39,9 @@ def hash_password(password: str) -> str:
 
 def authenticate_ldap(username: str, password: str) -> bool:
     """Tenta autenticar no AD via LDAP. Retorna True se autenticado."""
+    if not _USERNAME_RE.match(username):
+        logger.warning("LDAP: username rejeitado por formato inválido.")
+        return False
     try:
         from ldap3 import Server, Connection
         server = Server(LDAP_URL, connect_timeout=5)
@@ -36,13 +49,14 @@ def authenticate_ldap(username: str, password: str) -> bool:
         conn = Connection(server, user=user_dn, password=password, auto_bind=True)
         conn.unbind()
         return True
-    except Exception as e:
-        print(f"[LDAP] Falha na autenticação para {username}: {e}")
+    except Exception:
+        # Não logar a exceção completa para não expor detalhes do AD
+        logger.info("LDAP: autenticação falhou para o usuário '%s'.", username)
         return False
 
 
 def create_access_token(data: dict) -> str:
-    """Cria JWT com sub, role e exp"""
+    """Cria JWT com sub, role e exp."""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
@@ -75,7 +89,7 @@ def require_role(*roles: str):
         if current_user.role not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Permissão insuficiente"
+                detail="Permissão insuficiente",
             )
         return current_user
     return Depends(check_role)

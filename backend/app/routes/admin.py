@@ -77,8 +77,8 @@ def create_local_user(
     if existing:
         raise HTTPException(status_code=409, detail="Usuário já existe")
 
-    if len(payload.password) < 6:
-        raise HTTPException(status_code=422, detail="Senha deve ter no mínimo 6 caracteres")
+    if len(payload.password) < 8:
+        raise HTTPException(status_code=422, detail="Senha deve ter no mínimo 8 caracteres")
 
     new_user = models.User(
         username=payload.username,
@@ -123,8 +123,8 @@ def change_user_password(
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
     if user.auth_provider == "ldap":
         raise HTTPException(status_code=400, detail="Não é possível alterar senha de usuários LDAP")
-    if len(payload.new_password) < 6:
-        raise HTTPException(status_code=422, detail="Senha deve ter no mínimo 6 caracteres")
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=422, detail="Senha deve ter no mínimo 8 caracteres")
 
     user.hashed_password = auth_utils.hash_password(payload.new_password)
     db.commit()

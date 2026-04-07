@@ -18,8 +18,8 @@ def get_ativos(current_user: models.User = Depends(auth_utils.get_current_user))
 
 @router.get("/parametros", response_model=schemas.ParametrosResponse)
 def get_parametros(
-    ano: int = Query(default=None),
-    mes: int = Query(default=None),
+    ano: int = Query(default=None, ge=2000, le=2100),
+    mes: int = Query(default=None, ge=1, le=12),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth_utils.get_current_user),
 ):
