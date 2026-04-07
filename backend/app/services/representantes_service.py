@@ -68,13 +68,13 @@ def get_icms_por_representante(ano: int | None = None, mes: int | None = None) -
 
 
 def get_representantes_ativos() -> list[dict]:
-    """Lista representantes ativos (empresa 8, situacao='2') do parquet.
+    """Lista representantes ativos (empresa 8, situacao != '5') do parquet.
     Retorna lista de dicts com {codigo, fantasia, comissao, imposto}.
     """
     if not os.path.exists(PARQUET_PATH_REPRESENTANTES):
         return []
     df = pd.read_parquet(PARQUET_PATH_REPRESENTANTES, engine="pyarrow")
-    df8 = df[(df["codEmpresa"] == 8) & (df["situacao"] == "2")].copy()
+    df8 = df[(df["codEmpresa"] == 8) & (df["situacao"] != "5")].copy()
     if df8.empty:
         return []
     df8["dataAdmissao"] = pd.to_datetime(df8["dataAdmissao"], errors="coerce")

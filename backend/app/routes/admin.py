@@ -143,25 +143,31 @@ def change_user_password(
 
 @router.get("/audit-logs")
 def list_audit_logs(
-    limit: int = 100,
+    limit: int = 10,
+    date_from: str = None,
+    date_to: str = None,
     current_user: models.User = auth_utils.require_role("admin"),
     db: Session = Depends(get_db),
 ):
-    """Lista logs de auditoria (admin only)."""
-    logs = (
-        db.query(models.AuditLog)
-        .order_by(desc(models.AuditLog.created_at))
-        .limit(limit)
-        .all()
+    """Lista logs de auditoria com username (admin only). Filtros: date_from, date_to (YYYY-MM-DD)."""
+    from datetime import datetime, timedelta
+    query = (
+        db.query(models.AuditLog, models.User.username)
+        .outerjoin(models.User, models.AuditLog.user_id == models.User.id)
     )
+    if date_from:
+        query = query.filter(models.AuditLog.created_at >= datetime.fromisoformat(date_from))
+    if date_to:
+        query = query.filter(models.AuditLog.created_at < datetime.fromisoformat(date_to) + timedelta(days=1))
+    rows = query.order_by(desc(models.AuditLog.created_at)).limit(limit).all()
     return [
         {
             "id": log.id,
-            "user_id": log.user_id,
+            "username": username,
             "action": log.action,
             "status": log.status,
             "metadata": log.event_metadata,
-            "created_at": log.created_at.isoformat() if log.created_at else None,
+            "created_at": (log.created_at.isoformat() + "Z") if log.created_at else None,
         }
-        for log in logs
+        for log, username in rows
     ]

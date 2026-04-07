@@ -84,7 +84,21 @@ def save_parametros(
     """Salva (upsert) lista de parâmetros no banco. Requer role admin ou editor."""
     data = [i.model_dump() for i in items]
     count = representantes_service.upsert_parametros(db, data)
-    log_audit(db, current_user.id, "PARAM_UPDATE", "success", {"count": count, "updated_by": current_user.username})
+    registros = [
+        {
+            "representante": str(item["representante"]).upper(),
+            "vigencia": str(item["data_vigencia"])[:7],
+            **{k: item[k] for k in ("meta_frete_1", "meta_frete_2", "meta_frete_3",
+                                     "margem_parbo", "margem_branco", "margem_integral")
+               if item.get(k) is not None},
+        }
+        for item in data
+    ]
+    log_audit(db, current_user.id, "PARAM_UPDATE", "success", {
+        "updated_by": current_user.username,
+        "count": count,
+        "registros": registros,
+    })
     return {"salvos": count}
 
 
@@ -98,9 +112,16 @@ def delete_parametro(
     record = db.query(models.ParametroRepresentante).filter_by(id=param_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Registro não encontrado")
+    rep_nome = record.representante
+    rep_vigencia = str(record.data_vigencia)[:7]
     db.delete(record)
     db.commit()
-    log_audit(db, current_user.id, "PARAM_DELETE", "success", {"param_id": param_id, "deleted_by": current_user.username})
+    log_audit(db, current_user.id, "PARAM_DELETE", "success", {
+        "param_id": param_id,
+        "representante": rep_nome,
+        "vigencia": rep_vigencia,
+        "deleted_by": current_user.username,
+    })
     return {"deleted": param_id}
 
 

@@ -3,15 +3,15 @@ services:
     image: postgres:16-alpine
     container_name: precificacao-db
     environment:
-      POSTGRES_DB: precificacao
-      POSTGRES_USER: precificacao
-      POSTGRES_PASSWORD: precificacao123
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5434:5432"
     volumes:
       - ./db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U precificacao"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -26,10 +26,10 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://precificacao:precificacao123@db:5432/precificacao
-      SECRET_KEY: "Realengo@Precificacao#2024"
-      LDAP_URL: "ldap://arrozrealengo.local:389"
-      AD_DOMAIN: "arrozrealengo.local"
+      DATABASE_URL: ${DATABASE_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      LDAP_URL: ${LDAP_URL}
+      AD_DOMAIN: ${AD_DOMAIN}
     volumes:
       - /mnt/datalake_realengo:/mnt/datalake_realengo:ro
       - ./backend/config:/app/config

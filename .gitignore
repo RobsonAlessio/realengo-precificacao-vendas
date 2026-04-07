@@ -1,0 +1,37 @@
+# Banco de dados e backups
+db_data/
+backups/
+debugs/
+
+# Variáveis de ambiente — crie .env.example sem valores reais
+.env
+.env.*
+!.env.example
+
+# Dependências
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+
+# Build
+frontend/dist/
+frontend/build/
+
+# Logs
+*.log
+logs/
+
+# Chaves e certificados
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+*.jks
+
+# Arquivos temporários
+*.tmp
+*.bak
+*.orig
