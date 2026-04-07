@@ -197,10 +197,11 @@ def get_renda_processo(ano: int, mes: int) -> dict[str, float]:
     renda_branco = float(df[mask_branco]["Percentual"].mean()) - _RENDA_AJUSTE
 
     return {
-        "parbo":    round(renda_parbo, 6),
-        "integral": round(renda_parbo, 6),  # INTEGRAL usa mesma renda do PARBO (Empresa 8)
-        "branco":   round(renda_branco, 6),
-        "aviso":    aviso_fallback,
+        "parbo":           round(renda_parbo, 6),
+        "integral":        round(renda_parbo, 6),  # INTEGRAL usa mesma renda do PARBO (Empresa 8)
+        "branco":          round(renda_branco, 6),
+        "mes_referencia":  f"{ref_ano}-{ref_mes:02d}",
+        "aviso":           aviso_fallback,
     }
 
 
@@ -283,9 +284,10 @@ def get_custo_mp() -> dict:
         return {
             "data": referencia,
             "renda_processo": {
-                "parbo":    renda["parbo"],
-                "integral": renda["integral"],
-                "branco":   renda["branco"],
+                "parbo":           renda["parbo"],
+                "integral":        renda["integral"],
+                "branco":          renda["branco"],
+                "mes_referencia":  renda.get("mes_referencia"),
             },
             "empresa_08": {
                 "parbo":        _mp_sc_para_fardo(v08, renda["parbo"]),

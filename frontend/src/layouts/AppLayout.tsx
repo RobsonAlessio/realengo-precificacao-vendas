@@ -39,6 +39,13 @@ function IconLogout({ color = 'currentColor' }: { color?: string }) {
     </svg>
   )
 }
+function IconShield({ color = 'currentColor' }: { color?: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+  )
+}
 function IconChevronLeft({ color = 'currentColor' }: { color?: string }) {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -55,11 +62,12 @@ function IconChevronRight({ color = 'currentColor' }: { color?: string }) {
 }
 
 // ── Menu items ────────────────────────────────────────────────────────────────
-const MENU_ITEMS = [
+const BASE_MENU = [
   { key: 'prices',    Icon: IconTable,    label: 'Tabela de Preços' },
   { key: 'simulator', Icon: IconBarChart, label: 'Simulador de Vendas' },
   { key: 'params',    Icon: IconUsers,    label: 'Parâmetros' },
 ]
+const ADMIN_ITEM = { key: 'admin', Icon: IconShield, label: 'Usuários' }
 
 function NavBtn({
   isActive, isCollapsed, Icon, label, onClick,
@@ -121,6 +129,7 @@ export default function AppLayout() {
   const location = useLocation()
   
   const activeKey = location.pathname.split('/').filter(Boolean).pop() || 'prices'
+  const menuItems = user?.role === 'admin' ? [...BASE_MENU, ADMIN_ITEM] : BASE_MENU
 
   const [collapsed, setCollapsed] = useState(false)
   const [hoverLogout, setHoverLogout] = useState(false)
@@ -199,7 +208,7 @@ export default function AppLayout() {
 
         {/* Nav */}
         <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '10px 8px' }}>
-          {MENU_ITEMS.map(({ key, Icon, label }) => (
+          {menuItems.map(({ key, Icon, label }) => (
             <NavBtn
               key={key}
               isActive={key === activeKey}

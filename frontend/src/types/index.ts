@@ -2,6 +2,8 @@ export interface User {
   id: number
   username: string
   is_active: boolean
+  role: string | null
+  auth_provider: string
   created_at: string
 }
 

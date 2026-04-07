@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Numeric, Date, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Numeric, Date, UniqueConstraint, JSON, ForeignKey
 from app.database import Base
 
 
@@ -8,9 +8,22 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    hashed_password = Column(String, nullable=True)  # nullable para usuários LDAP
     is_active = Column(Boolean, default=True)
+    role = Column(String(50), nullable=True)  # None = pendente aprovação
+    auth_provider = Column(String(20), nullable=False, default="local")  # "local" ou "ldap"
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    action = Column(String(100), nullable=False)
+    status = Column(String(20), nullable=False)
+    event_metadata = Column(JSON, nullable=True)  # renamed from metadata para evitar conflito com SQLAlchemy
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 class ParametroRepresentante(Base):

@@ -7,9 +7,21 @@ class UserBase(BaseModel):
     username: str
 
 
+class CreateLocalUserRequest(BaseModel):
+    username: str
+    password: str
+    role: Optional[str] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    new_password: str
+
+
 class UserResponse(UserBase):
     id: int
     is_active: bool
+    role: Optional[str] = None
+    auth_provider: str = "local"
     created_at: datetime
 
     class Config:

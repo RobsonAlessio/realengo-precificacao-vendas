@@ -46,7 +46,7 @@ interface TabelaResponse {
   colunas: ColDef[]
   calculos_ativos: CalcDef[]
   dados: Record<string, unknown>[]
-  custo_mp: { data: string; aviso: string | null }
+  custo_mp: { data: string; aviso: string | null; renda_processo?: { parbo: number; integral: number; branco: number; mes_referencia: string; aviso: string | null } }
   custo_producao: { parbo_integral: CustoProducaoTipo | null; branco: CustoProducaoTipo | null; aviso: string | null }
   mes: string | null
 }
@@ -127,8 +127,8 @@ function buildColumns(
   calcAtivos: CalcDef[],
   dados: Record<string, unknown>[],
 ): ColumnsType<Record<string, unknown>> {
-  const temF2 = dados.some(r => r['meta_frete_2'] != null)
-  const temF3 = dados.some(r => r['meta_frete_3'] != null)
+  const temF2 = dados?.some(r => r['meta_frete_2'] != null) ?? false
+  const temF3 = dados?.some(r => r['meta_frete_3'] != null) ?? false
 
   const visiveis = colDefs.filter(c => c.visivel)
 
@@ -282,16 +282,7 @@ function buildColumns(
     if (temF2) subCols.push(makeSubCol('Frete 2', calc.id + '_f2', 'meta_frete_2'))
     if (temF3) subCols.push(makeSubCol('Frete 3', calc.id + '_f3', 'meta_frete_3'))
 
-    return {
-      title: (
-        <Tooltip title={`Fórmula: ${calc.formula}`}>
-          {calc.label}
-        </Tooltip>
-      ),
-      key: `${calc.id}__grp__${grupo ?? 'root'}`,
-      onHeaderCell: () => ({ style: gs ? { background: gs.subheader, color, fontWeight: 700 } : {} }),
-      children: subCols,
-    }
+    return subCols
   }
 
   const result: ColumnsType<Record<string, unknown>> = semGrupo.map(toAntCol)
@@ -305,7 +296,7 @@ function buildColumns(
     const gs = GROUP_STYLE[g]
     const children: ColumnsType<Record<string, unknown>> = [
       ...(grupos[g] ?? []).map(toAntCol),
-      ...(calcGrupos[g] ?? []).map(c => toCalcCol(c, g)),
+      ...(calcGrupos[g] ?? []).flatMap(c => toCalcCol(c, g)),
     ]
     result.push({
       title: g,
@@ -317,7 +308,7 @@ function buildColumns(
   }
 
   const calcSemGrupo = calcGrupos['_calc'] ?? []
-  result.push(...calcSemGrupo.map(c => toCalcCol(c)))
+  result.push(...calcSemGrupo.flatMap(c => toCalcCol(c)))
 
   return result
 }
@@ -350,7 +341,7 @@ export default function PriceTable() {
   const columns  = tabela ? buildColumns(tabela.colunas, tabela.calculos_ativos, tabela.dados) : []
   const avisoMp  = tabela?.custo_mp?.aviso ?? null
   const avisoProd = tabela?.custo_producao?.aviso ?? null
-  const semDados = tabela !== null && tabela.dados.length === 0
+  const semDados = tabela !== null && tabela?.dados?.length === 0
 
   return (
     <div style={{
@@ -426,6 +417,16 @@ export default function PriceTable() {
                     <span style={{ color: '#d97706', fontSize: 13, cursor: 'default', lineHeight: 1 }}>⚠</span>
                   </Tooltip>
                 )}
+              </span>
+            )}
+
+            {tabela?.custo_mp?.renda_processo?.parbo != null && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Tooltip title={`Parbo/Integral: ${(tabela.custo_mp.renda_processo.parbo * 100).toFixed(2)}% · Branco: ${(tabela.custo_mp.renda_processo.branco * 100).toFixed(2)}%`}>
+                  <span style={{ ...badge('slate'), cursor: 'help' }}>
+                    Renda: P/I {(tabela.custo_mp.renda_processo.parbo * 100).toFixed(1)}% · B {(tabela.custo_mp.renda_processo.branco * 100).toFixed(1)}% ({tabela.custo_mp.renda_processo.mes_referencia})
+                  </span>
+                </Tooltip>
               </span>
             )}
           </div>

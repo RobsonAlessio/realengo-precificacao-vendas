@@ -10,7 +10,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-SILVER_INDICE_ATUAL = "/mnt/datalake_realengo/silver/custo_producao/indice_atual.parquet"
+SILVER_INDICE_ATUAL = "/mnt/datalake_realengo/gold/custo_producao/indice_atual.parquet"
 
 
 def get_custo_producao() -> dict:

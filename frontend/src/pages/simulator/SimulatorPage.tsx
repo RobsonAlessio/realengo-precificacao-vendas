@@ -27,11 +27,18 @@ const card: CSSProperties = {
 const cardHeader = (color: string): CSSProperties => ({
   padding: '12px 16px',
   borderBottom: '1px solid #f1f5f9',
-  fontFamily: 'Outfit, sans-serif',
+  fontFamily: 'Inter, sans-serif',
   fontWeight: 700,
   fontSize: 16,
   color,
 })
+const baseFont: CSSProperties = {
+  fontFamily: 'Inter, sans-serif',
+}
+const inputStyle: CSSProperties = {
+  width: '100%',
+  fontFamily: 'Inter, sans-serif',
+}
 const subLabel: CSSProperties = {
   display: 'block',
   color: '#64748b',
@@ -75,7 +82,7 @@ function PctField({ label, value, onChange, isHighlight, status }: {
       <span style={{ ...subLabel, color: isHighlight ? '#3b82f6' : '#94a3b8' }}>{label}</span>
       <InputNumber
         addonAfter="%"
-        style={{ width: '100%' }}
+        style={inputStyle}
         value={Number((value * 100).toFixed(2))}
         onChange={v => onChange((v || 0) / 100)}
         precision={2}
@@ -203,7 +210,7 @@ export default function SalesSimulator() {
   const fardoVal = mpVar ? formValues[mpVar.campo] || 0 : 0
 
   return (
-    <div style={{ flex: 1, width: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', gap: 10, position: 'relative' }}>
+    <div style={{ ...baseFont, flex: 1, width: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', gap: 10, position: 'relative' }}>
 
       {/* loading overlay */}
       {loading && (
@@ -219,19 +226,19 @@ export default function SalesSimulator() {
             <div style={{ width: 34, height: 34, background: 'rgba(29,78,137,0.08)', border: '1px solid rgba(29,78,137,0.18)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <IconCalc />
             </div>
-            <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 18, color: '#0f1f3d', letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
+            <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 18, color: '#0f1f3d', letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
               Simulador de Vendas
             </span>
           </div>
 
-          {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '6px 12px', color: '#991b1b', fontSize: 13, fontFamily: 'Inter,sans-serif' }}>{error}</div>}
+          {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '6px 12px', color: '#991b1b', fontSize: 13, fontFamily: 'Inter, sans-serif' }}>{error}</div>}
 
           <div style={{ flex: 1, minWidth: 200 }}>
-            <Select showSearch allowClear placeholder="Selecione um representante..." style={{ width: '100%' }} options={reps} value={selectedRep} onChange={setSelectedRep} filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())} size="small" />
+            <Select showSearch allowClear placeholder="Selecione um representante..." style={{ width: '100%', fontFamily: 'Inter, sans-serif' }} options={reps} value={selectedRep} onChange={setSelectedRep} filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())} size="small" />
           </div>
           <div style={{ flexShrink: 0 }}>
-            <Radio.Group value={selectedCalcId} onChange={e => setSelectedCalcId(e.target.value)} buttonStyle="solid" size="small">
-              {tabela?.calculos_ativos.map(c => <Radio.Button key={c.id} value={c.id}>{c.grupo || c.label}</Radio.Button>)}
+            <Radio.Group value={selectedCalcId} onChange={e => setSelectedCalcId(e.target.value)} buttonStyle="solid" size="small" style={{ fontFamily: 'Inter, sans-serif' }}>
+              {tabela?.calculos_ativos.map(c => <Radio.Button key={c.id} value={c.id} style={{ fontFamily: 'Inter, sans-serif' }}>{c.grupo || c.label}</Radio.Button>)}
             </Radio.Group>
           </div>
         </div>
@@ -252,7 +259,7 @@ export default function SalesSimulator() {
                 <FieldRow>
                   <div style={{ flex: 1 }}>
                     <span style={subLabel}>Saco 50kg (renda: {(renda * 100).toFixed(1)}%)</span>
-                    <InputNumber prefix="R$" style={{ width: '100%' }} value={Number(sacoVal.toFixed(4))} onChange={v2 => handleValueChange(mpVar.campo, ((v2 || 0) * 0.6) / renda)} precision={2} decimalSeparator="," step={1} />
+                    <InputNumber prefix="R$" style={inputStyle} value={Number(sacoVal.toFixed(4))} onChange={v2 => handleValueChange(mpVar.campo, ((v2 || 0) * 0.6) / renda)} precision={2} decimalSeparator="," step={1} />
                   </div>
                   <ReadonlyValue label="Fardo 30kg (Custo Efetivo)" value={fmt(fardoVal)} />
                 </FieldRow>
@@ -265,13 +272,13 @@ export default function SalesSimulator() {
                 {embalagemVar && (
                   <div style={{ flex: 1 }}>
                     <span style={subLabel}>{embalagemVar.label}</span>
-                    <InputNumber prefix="R$" style={{ width: '100%' }} value={formValues[embalagemVar.campo] || 0} onChange={v => handleValueChange(embalagemVar.campo, v)} precision={2} decimalSeparator="," step={0.1} />
+                    <InputNumber prefix="R$" style={inputStyle} value={formValues[embalagemVar.campo] || 0} onChange={v => handleValueChange(embalagemVar.campo, v)} precision={2} decimalSeparator="," step={0.1} />
                   </div>
                 )}
                 {energiaVar && (
                   <div style={{ flex: 1 }}>
                     <span style={subLabel}>{energiaVar.label}</span>
-                    <InputNumber prefix="R$" style={{ width: '100%' }} value={formValues[energiaVar.campo] || 0} onChange={v => handleValueChange(energiaVar.campo, v)} precision={2} decimalSeparator="," step={0.1} />
+                    <InputNumber prefix="R$" style={inputStyle} value={formValues[energiaVar.campo] || 0} onChange={v => handleValueChange(energiaVar.campo, v)} precision={2} decimalSeparator="," step={0.1} />
                   </div>
                 )}
               </FieldRow>
@@ -283,14 +290,14 @@ export default function SalesSimulator() {
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={subLabel}>{freteVar.label}</span>
-                    {repData && (repData.meta_frete_2 || repData.meta_frete_3) && (
+                    {repData && (Number(repData.meta_frete_2) > 0 || Number(repData.meta_frete_3) > 0) && (
                       <div style={{ display: 'flex', gap: 8 }}>
-                        {repData.meta_frete_2 && <span style={{ fontSize: 12, color: '#3b82f6', cursor: 'pointer' }} onClick={() => handleValueChange(freteVar.campo, Number(repData.meta_frete_2))}>F2 ({fmt(Number(repData.meta_frete_2))})</span>}
-                        {repData.meta_frete_3 && <span style={{ fontSize: 12, color: '#3b82f6', cursor: 'pointer' }} onClick={() => handleValueChange(freteVar.campo, Number(repData.meta_frete_3))}>F3 ({fmt(Number(repData.meta_frete_3))})</span>}
+                        {Number(repData.meta_frete_2) > 0 && <span style={{ fontSize: 12, color: '#3b82f6', cursor: 'pointer' }} onClick={() => handleValueChange(freteVar.campo, Number(repData.meta_frete_2))}>F2 ({fmt(Number(repData.meta_frete_2))})</span>}
+                        {Number(repData.meta_frete_3) > 0 && <span style={{ fontSize: 12, color: '#3b82f6', cursor: 'pointer' }} onClick={() => handleValueChange(freteVar.campo, Number(repData.meta_frete_3))}>F3 ({fmt(Number(repData.meta_frete_3))})</span>}
                       </div>
                     )}
                   </div>
-                  <InputNumber prefix="R$" style={{ width: '100%' }} value={formValues[freteVar.campo] || 0} onChange={v => handleValueChange(freteVar.campo, v)} precision={2} decimalSeparator="," step={0.1} />
+                  <InputNumber prefix="R$" style={inputStyle} value={formValues[freteVar.campo] || 0} onChange={v => handleValueChange(freteVar.campo, v)} precision={2} decimalSeparator="," step={0.1} />
                 </div>
                 <div style={{ flex: 1 }} />
               </FieldRow>
@@ -305,7 +312,7 @@ export default function SalesSimulator() {
                     <InfoCircleOutlined style={{ fontSize: 12, color: '#94a3b8', cursor: 'default' }} />
                   </Tooltip>
                 </span>
-                <InputNumber prefix="R$" style={{ width: '100%' }} value={custoAdicional || 0} onChange={v => { setCustoAdicional(v || 0); setManualFinalPrice(null) }} precision={2} decimalSeparator="," step={0.5} />
+                <InputNumber prefix="R$" style={inputStyle} value={custoAdicional || 0} onChange={v => { setCustoAdicional(v || 0); setManualFinalPrice(null) }} precision={2} decimalSeparator="," step={0.5} />
               </div>
               <div style={{ flex: 1 }} />
             </FieldRow>
@@ -314,14 +321,14 @@ export default function SalesSimulator() {
             {varsFixaisExtras.map(v => (
               <div key={v.campo} style={{ marginBottom: 12 }}>
                 <span style={subLabel}>{v.label}</span>
-                <InputNumber prefix="R$" style={{ width: '100%' }} value={formValues[v.campo] || 0} onChange={val => handleValueChange(v.campo, val)} precision={2} decimalSeparator="," step={0.1} />
+                  <InputNumber prefix="R$" style={inputStyle} value={formValues[v.campo] || 0} onChange={val => handleValueChange(v.campo, val)} precision={2} decimalSeparator="," step={0.1} />
               </div>
             ))}
 
             {/* Subtotal */}
             <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 14, marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontFamily: 'Inter,sans-serif', fontWeight: 600, fontSize: 14, color: '#374151' }}>Subtotal Fixos (=)</span>
-              <span style={{ fontFamily: 'Inter,sans-serif', fontWeight: 700, fontSize: 22, color: '#1d4e89' }}>{fmt(somaFixos)}</span>
+              <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: 14, color: '#374151' }}>Subtotal Fixos (=)</span>
+              <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 22, color: '#1d4e89' }}>{fmt(somaFixos)}</span>
             </div>
           </div>
         </div>
@@ -347,9 +354,9 @@ export default function SalesSimulator() {
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                     <span style={subLabel}>{margemVar.label}</span>
-                    <span style={{ fontSize: 12, color: '#3b82f6', fontFamily: 'Inter,sans-serif' }}>(Calculado automaticamente) <SwapOutlined /></span>
+                    <span style={{ fontSize: 12, color: '#3b82f6', fontFamily: 'Inter, sans-serif' }}>(Calculado automaticamente) <SwapOutlined /></span>
                   </div>
-                  <InputNumber addonAfter="%" style={{ width: '100%' }} value={Number(((formValues[margemVar.campo] || 0) * 100).toFixed(2))} onChange={v => handleValueChange(margemVar.campo, (v || 0) / 100)} precision={2} decimalSeparator="," step={1} status={manualFinalPrice ? 'warning' : ''} />
+                  <InputNumber addonAfter="%" style={inputStyle} value={Number(((formValues[margemVar.campo] || 0) * 100).toFixed(2))} onChange={v => handleValueChange(margemVar.campo, (v || 0) / 100)} precision={2} decimalSeparator="," step={1} status={manualFinalPrice ? 'warning' : ''} />
                 </div>
               )}
 
@@ -357,19 +364,19 @@ export default function SalesSimulator() {
               {varsPctsExtras.map(v => (
                 <div key={v.campo} style={{ marginBottom: 12 }}>
                   <span style={subLabel}>{v.label}</span>
-                  <InputNumber addonAfter="%" style={{ width: '100%' }} value={Number(((formValues[v.campo] || 0) * 100).toFixed(2))} onChange={val => handleValueChange(v.campo, (val || 0) / 100)} precision={2} decimalSeparator="," step={1} />
+                  <InputNumber addonAfter="%" style={inputStyle} value={Number(((formValues[v.campo] || 0) * 100).toFixed(2))} onChange={val => handleValueChange(v.campo, (val || 0) / 100)} precision={2} decimalSeparator="," step={1} />
                 </div>
               ))}
 
               {/* Subtotal + Divisor */}
               <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 14, marginTop: 4 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <span style={{ fontFamily: 'Inter,sans-serif', fontWeight: 600, fontSize: 14, color: '#374151' }}>Subtotal Deduções</span>
-                  <span style={{ fontFamily: 'Inter,sans-serif', fontWeight: 700, fontSize: 18, color: '#dc2626' }}>{fmt(somaPcts, 'percentual')}</span>
+                  <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: 14, color: '#374151' }}>Subtotal Deduções</span>
+                  <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 18, color: '#dc2626' }}>{fmt(somaPcts, 'percentual')}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontFamily: 'Inter,sans-serif', fontWeight: 600, fontSize: 14, color: '#374151' }}>Divisor Geral (1 - deduções) (=)</span>
-                  <span style={{ fontFamily: 'Inter,sans-serif', fontWeight: 700, fontSize: 22, color: '#d4380d' }}>{divisor.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</span>
+                  <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: 14, color: '#374151' }}>Divisor Geral (1 - deduções) (=)</span>
+                  <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 22, color: '#d4380d' }}>{divisor.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</span>
                 </div>
               </div>
             </div>
@@ -380,10 +387,10 @@ export default function SalesSimulator() {
             <div style={{ ...cardHeader('#166534'), borderBottom: '1px solid #bbf7d0' }}>Preço Final por Fardo</div>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px 24px', gap: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ fontFamily: 'Outfit,sans-serif', fontWeight: 700, fontSize: 30, color: '#166534', lineHeight: 1 }}>R$</span>
+                <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 30, color: '#166534', lineHeight: 1 }}>R$</span>
                 <InputNumber
                   size="large"
-                  style={{ width: 170, fontWeight: 700, color: '#166534', fontSize: 30 }}
+                  style={{ width: 170, fontFamily: 'Inter, sans-serif', fontWeight: 700, color: '#166534', fontSize: 30 }}
                   value={Number(finalPrice.toFixed(2))}
                   onChange={handleFinalPriceChange}
                   precision={2}
@@ -392,7 +399,7 @@ export default function SalesSimulator() {
                   variant="borderless"
                 />
               </div>
-              <span style={{ color: '#64748b', fontSize: 13, fontFamily: 'Inter,sans-serif', textAlign: 'center', maxWidth: 280 }}>
+              <span style={{ color: '#64748b', fontSize: 13, fontFamily: 'Inter, sans-serif', textAlign: 'center', maxWidth: 280 }}>
                 <InfoCircleOutlined style={{ marginRight: 4 }} />
                 Altere para calcular qual seria a <strong style={{ color: '#1d4e89' }}>Margem</strong> resultante
               </span>

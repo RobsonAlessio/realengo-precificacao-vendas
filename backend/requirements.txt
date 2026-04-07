@@ -10,3 +10,4 @@ pyarrow==15.0.0
 python-dotenv==1.0.0
 python-multipart==0.0.9
 alembic==1.13.1
+ldap3==2.9.1

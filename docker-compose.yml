@@ -28,6 +28,8 @@ services:
     environment:
       DATABASE_URL: postgresql://precificacao:precificacao123@db:5432/precificacao
       SECRET_KEY: "Realengo@Precificacao#2024"
+      LDAP_URL: "ldap://arrozrealengo.local:389"
+      AD_DOMAIN: "arrozrealengo.local"
     volumes:
       - /mnt/datalake_realengo:/mnt/datalake_realengo:ro
       - ./backend/config:/app/config

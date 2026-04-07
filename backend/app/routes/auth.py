@@ -2,22 +2,83 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas, auth as auth_utils
+from app.audit import log_audit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=schemas.Token)
 def login(payload: schemas.LoginRequest, db: Session = Depends(get_db)):
+    """
+    Fluxo de login com suporte a LDAP + fallback local
+    
+    1. Tenta autenticar no AD
+    2. Se sucesso AD:
+       a. Cria usuário LDAP se não existe
+       b. Retorna 403 se role é None (pendente aprovação)
+       c. Gera JWT se role existe
+    3. Se falha AD:
+       a. Tenta autenticar local (se auth_provider=local)
+    """
+    
+    # Tenta autenticar no AD primeiro
+    ldap_auth = auth_utils.authenticate_ldap(payload.username, payload.password)
+    
+    if ldap_auth:
+        # Autenticação LDAP bem-sucedida
+        user = db.query(models.User).filter(models.User.username == payload.username).first()
+        
+        if not user:
+            # Cria novo usuário LDAP
+            user = models.User(
+                username=payload.username,
+                hashed_password=None,  # Usuários LDAP não têm senha local
+                auth_provider="ldap",
+                is_active=True,
+                role=None,  # Pendente aprovação
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            log_audit(db, user.id, "USER_CREATED_LDAP", "success", {"username": payload.username})
+        
+        # Verifica se o usuário LDAP tem role
+        if user.role is None:
+            log_audit(db, user.id, "LOGIN_PENDING_ROLE", "warning", {"username": payload.username})
+            raise HTTPException(
+                status_code=403,
+                detail="Usuário LDAP criado. Aguardando aprovação de acesso por um administrador."
+            )
+        
+        # Gera JWT com sub e role
+        token = auth_utils.create_access_token({"sub": user.username, "role": user.role})
+        log_audit(db, user.id, "LOGIN_SUCCESS", "success", {"username": payload.username, "auth_provider": "ldap"})
+        return {"access_token": token, "token_type": "bearer"}
+    
+    # Autenticação LDAP falhou, tenta local
     user = db.query(models.User).filter(models.User.username == payload.username).first()
-    if not user or not auth_utils.verify_password(payload.password, user.hashed_password):
+    
+    if not user or user.auth_provider != "local":
+        log_audit(db, None, "LOGIN_FAILURE", "error", {"username": payload.username})
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Usuário ou senha incorretos",
         )
+    
+    if not auth_utils.verify_password(payload.password, user.hashed_password or ""):
+        log_audit(db, user.id, "LOGIN_FAILURE", "error", {"username": payload.username, "auth_provider": "local"})
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Usuário ou senha incorretos",
+        )
+    
     if not user.is_active:
+        log_audit(db, user.id, "LOGIN_FAILURE", "warning", {"username": payload.username, "reason": "inactive"})
         raise HTTPException(status_code=403, detail="Usuário inativo")
 
-    token = auth_utils.create_access_token({"sub": user.username})
+    # Sucesso no login local
+    token = auth_utils.create_access_token({"sub": user.username, "role": user.role})
+    log_audit(db, user.id, "LOGIN_SUCCESS", "success", {"username": payload.username, "auth_provider": "local"})
     return {"access_token": token, "token_type": "bearer"}
 
 

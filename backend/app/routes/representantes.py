@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app import models, auth as auth_utils, schemas
 from app.database import get_db
 from app.services import representantes_service
+from app.audit import log_audit
 
 router = APIRouter(prefix="/representantes", tags=["representantes"])
 
@@ -78,11 +79,12 @@ def get_parametros(
 def save_parametros(
     items: list[schemas.ParametroRepresentanteCreate],
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth_utils.get_current_user),
+    current_user: models.User = auth_utils.require_role("admin", "editor"),
 ):
-    """Salva (upsert) lista de parâmetros no banco."""
+    """Salva (upsert) lista de parâmetros no banco. Requer role admin ou editor."""
     data = [i.model_dump() for i in items]
     count = representantes_service.upsert_parametros(db, data)
+    log_audit(db, current_user.id, "PARAM_UPDATE", "success", {"count": count, "updated_by": current_user.username})
     return {"salvos": count}
 
 
@@ -90,12 +92,35 @@ def save_parametros(
 def delete_parametro(
     param_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth_utils.get_current_user),
+    current_user: models.User = auth_utils.require_role("admin"),
 ):
-    """Remove um registro de parâmetro pelo ID."""
+    """Remove um registro de parâmetro pelo ID. Requer role admin."""
     record = db.query(models.ParametroRepresentante).filter_by(id=param_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Registro não encontrado")
     db.delete(record)
     db.commit()
+    log_audit(db, current_user.id, "PARAM_DELETE", "success", {"param_id": param_id, "deleted_by": current_user.username})
     return {"deleted": param_id}
+
+
+@router.post("/importar-parquet")
+def importar_parquet(
+    ano: int = Query(...),
+    mes: int = Query(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = auth_utils.require_role("admin"),
+):
+    """
+    Importa parâmetros do parquet para o BD para o mês/ano especificado.
+    Requer role admin.
+    """
+    response = representantes_service.importar_parquet(db, ano, mes)
+    log_audit(
+        db,
+        current_user.id,
+        "IMPORT_PARQUET",
+        "success",
+        {"ano": ano, "mes": mes, "importados": response.get("importados", 0), "imported_by": current_user.username}
+    )
+    return response

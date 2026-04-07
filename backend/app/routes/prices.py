@@ -43,8 +43,8 @@ def _montar_rows_do_bd(db: Session) -> tuple[list[dict], str]:
             db.query(models.ParametroRepresentante)
             .filter(
                 models.ParametroRepresentante.representante == rep_name,
-                extract("year",  models.ParametroRepresentante.data_vigencia) == ano_ref,
-                extract("month", models.ParametroRepresentante.data_vigencia) == mes_ref_num,
+                extract("year",  models.ParametroRepresentante.data_vigencia) == hoje.year,
+                extract("month", models.ParametroRepresentante.data_vigencia) == hoje.month,
             )
             .order_by(models.ParametroRepresentante.data_vigencia.desc())
             .first()

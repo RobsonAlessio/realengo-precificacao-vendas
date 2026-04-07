@@ -69,7 +69,7 @@ def get_icms_por_representante(ano: int | None = None, mes: int | None = None) -
 
 def get_representantes_ativos() -> list[dict]:
     """Lista representantes ativos (empresa 8, situacao='2') do parquet.
-    Retorna lista de dicts com {codigo, fantasia}.
+    Retorna lista de dicts com {codigo, fantasia, comissao, imposto}.
     """
     if not os.path.exists(PARQUET_PATH_REPRESENTANTES):
         return []
@@ -83,13 +83,21 @@ def get_representantes_ativos() -> list[dict]:
     df8 = df8[df8["fantasia"].notna()].copy()
     df8["fantasia"] = df8["fantasia"].str.strip().str.upper()
     df8 = df8.sort_values("codRepresent")
+
+    from app.services.excel_reader import get_comissoes
+    comissoes = get_comissoes()
+    icms_map = get_icms_por_representante()
+
     result = []
     for _, row in df8.iterrows():
         codigo = row.get("codRepresent")
         fantasia = row["fantasia"]
+        cod_int = int(codigo) if codigo is not None and not (isinstance(codigo, float) and str(codigo) == "nan") else None
         result.append({
-            "codigo": int(codigo) if codigo is not None and not (isinstance(codigo, float) and str(codigo) == "nan") else None,
+            "codigo":   cod_int,
             "fantasia": fantasia,
+            "comissao": comissoes.get(fantasia),
+            "imposto":  icms_map.get(str(cod_int)) if cod_int is not None else None,
         })
     return result
 

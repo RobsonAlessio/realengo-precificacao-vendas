@@ -12,6 +12,9 @@ SECRET_KEY = os.getenv("SECRET_KEY", "chave-secreta-trocar-em-producao")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 horas
 
+LDAP_URL = os.getenv("LDAP_URL", "ldap://arrozrealengo.local:389")
+AD_DOMAIN = os.getenv("AD_DOMAIN", "arrozrealengo.local")
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
@@ -24,7 +27,22 @@ def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
 
+def authenticate_ldap(username: str, password: str) -> bool:
+    """Tenta autenticar no AD via LDAP. Retorna True se autenticado."""
+    try:
+        from ldap3 import Server, Connection
+        server = Server(LDAP_URL, connect_timeout=5)
+        user_dn = f"{username}@{AD_DOMAIN}"
+        conn = Connection(server, user=user_dn, password=password, auto_bind=True)
+        conn.unbind()
+        return True
+    except Exception as e:
+        print(f"[LDAP] Falha na autenticação para {username}: {e}")
+        return False
+
+
 def create_access_token(data: dict) -> str:
+    """Cria JWT com sub, role e exp"""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
@@ -49,3 +67,15 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None or not user.is_active:
         raise credentials_exception
     return user
+
+
+def require_role(*roles: str):
+    """Dependência que exige que o usuário tenha um dos roles especificados."""
+    def check_role(current_user: models.User = Depends(get_current_user)):
+        if current_user.role not in roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permissão insuficiente"
+            )
+        return current_user
+    return Depends(check_role)
