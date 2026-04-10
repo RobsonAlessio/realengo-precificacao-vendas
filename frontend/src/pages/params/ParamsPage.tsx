@@ -481,7 +481,7 @@ export default function RepresentantesParams() {
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <div>
+    <div style={{ height: 'calc(100vh - 32px)', overflow: 'hidden' }}>
       <Card
         style={{ ...cardStyle, marginBottom: 16 }}
         bodyStyle={{ padding: '16px 20px' }}
@@ -623,7 +623,7 @@ export default function RepresentantesParams() {
               size="small"
               pagination={false}
               bordered
-              scroll={{ x: 'max-content' }}
+              scroll={{ x: 'max-content', y: 'calc(100vh - 280px)' }}
               locale={{
                 emptyText: loading
                   ? 'Carregando...'

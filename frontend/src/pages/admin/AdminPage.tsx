@@ -527,6 +527,7 @@ export default function AdminPage() {
             pagination={false}
             bordered
             loading={loading}
+            scroll={{ x: 'max-content', y: 'calc(100vh - 220px)' }}
             locale={{ emptyText: 'Nenhum usuário encontrado' }}
           />
         </>
@@ -609,6 +610,7 @@ export default function AdminPage() {
             pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (t) => `${t} registros` }}
             bordered
             loading={logsLoading}
+            scroll={{ x: 'max-content', y: 'calc(100vh - 310px)' }}
             locale={{ emptyText: 'Nenhum registro encontrado' }}
           />
         </>
@@ -623,6 +625,7 @@ export default function AdminPage() {
       border: '1px solid #e2e8f0',
       boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04)',
       padding: '20px 24px 24px',
+      height: 'calc(100vh - 32px)',
       overflow: 'hidden',
     }}>
 

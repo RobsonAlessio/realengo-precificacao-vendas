@@ -350,6 +350,7 @@ export default function PriceTable() {
       border: '1px solid #e2e8f0',
       boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04)',
       padding: '20px 24px 24px',
+      height: 'calc(100vh - 32px)',
       overflow: 'hidden',
     }}>
 
@@ -563,7 +564,7 @@ export default function PriceTable() {
           size="middle"
           pagination={false}
           bordered
-          scroll={{ x: 'max-content' }}
+          scroll={{ x: 'max-content', y: 'calc(100vh - 240px)' }}
           locale={{ emptyText: loading ? 'Carregando...' : 'Nenhum dado encontrado' }}
         />
       </Spin>

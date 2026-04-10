@@ -34,17 +34,17 @@ docker compose logs --tail=50 precificacao-backend
 
 | Fonte | Caminho | Share de rede | Descricao |
 |-------|---------|--------------|-----------|
-| Qlik Comercial | `/mnt/qlik_comercial` | `\\192.168.0.222\dados` | Planilhas Excel com dados comerciais e metas |
+| Qlik Comercial | `/mnt/realengo_planilhas` | `\\192.168.0.222\dados` | Planilhas Excel com dados comerciais e metas |
 | DataLake Realengo | `/mnt/datalake_realengo` | `\\192.168.0.193\...` | Parquets gerados pelo Airflow ETL |
 
 **Arquivo principal:**
 ```
-/mnt/qlik_comercial/Qlik/Comercial/Meta Indicador de Tabela de Frete.xlsx
+/mnt/realengo_planilhas/Qlik/Comercial/Meta Indicador de Tabela de Frete.xlsx
 ```
 
 **Script de mount do Qlik Comercial:**
 ```bash
-/home/suporte/setups_mounts/setup_mount_qlik_comercial.sh
+/home/suporte/setups_mounts/setup_mount_realengo_planilhas.sh
 ```
 
 Se o mount estiver ausente, execute o script como root e verifique `/etc/fstab`.
@@ -180,7 +180,7 @@ Regra: `importado_parquet=FALSE` indica edicao manual — nunca sobrescrito pela
 - Nunca hardcodar IPs, senhas ou tokens no codigo
 - Variaveis de ambiente definidas no `docker-compose.yaml` ou `.env` (ignorado pelo git)
 - Logs estruturados no backend (usar `logging` padrao ou `loguru`)
-- O mount `/mnt/qlik_comercial` deve estar ativo antes de qualquer leitura do Excel
+- O mount `/mnt/realengo_planilhas` deve estar ativo antes de qualquer leitura do Excel
 
 ---
 
@@ -188,7 +188,9 @@ Regra: `importado_parquet=FALSE` indica edicao manual — nunca sobrescrito pela
 
 | Agente / Skill | Arquivo | Uso |
 |----------------|---------|-----|
-| `precificacao-expert` | `~/.claude/agents/precificacao-expert.md` | Especialista no projeto (contexto global) |
+| `precificacao-expert` | `~/.claude/agents/precificacao-expert.md` | Especialista no projeto — React, FastAPI, PostgreSQL, Docker |
+
+> Consulte o agente `precificacao-expert` para tarefas de frontend, backend, banco de dados ou integração com fontes de dados.
 
 ---
 
@@ -196,11 +198,11 @@ Regra: `importado_parquet=FALSE` indica edicao manual — nunca sobrescrito pela
 
 | Problema | Causa Provavel | Solucao |
 |----------|---------------|---------|
-| `FileNotFoundError` no Excel | Mount ausente | Rodar `setup_mount_qlik_comercial.sh` |
+| `FileNotFoundError` no Excel | Mount ausente | Rodar `setup_mount_realengo_planilhas.sh` |
 | Frontend 502/CORS | Backend fora do ar | `docker compose restart precificacao-backend` |
 | Porta 5434 recusada | DB nao subiu | `docker compose up -d precificacao-db` e checar logs |
 | `ModuleNotFoundError` no backend | Dependencia faltando | `docker compose build precificacao-backend` |
-| Dados desatualizados | Planilha do Qlik nao foi renovada | Verificar data de modificacao em `/mnt/qlik_comercial/Qlik/Comercial/` |
+| Dados desatualizados | Planilha do Qlik nao foi renovada | Verificar data de modificacao em `/mnt/realengo_planilhas/Qlik/Comercial/` |
 | Parametros do BD nao aparecem no calculo | `data_vigencia` maior que hoje | Verificar datas na aba Parametros |
 | Tabela `parametros_representante` nao existe | Banco nao recriou | `docker compose restart precificacao-backend` |
 | Valores de 2021 sem margens | Parquet de margens so tem meses recentes | Normal — apenas fretes foram importados para periodos antigos |

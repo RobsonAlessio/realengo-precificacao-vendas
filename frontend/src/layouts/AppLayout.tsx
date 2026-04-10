@@ -328,7 +328,7 @@ export default function AppLayout() {
       {/* ── Conteúdo ── */}
       <main style={{
         flex: 1,
-        overflowY: 'auto',
+        overflow: 'hidden',
         padding: 16,
         minWidth: 0,
         display: 'flex',
