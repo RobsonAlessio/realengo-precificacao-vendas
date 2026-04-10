@@ -1,208 +1,113 @@
 # Precificacao de Vendas Realengo
 
-## Visao Geral
+Sistema web de precificação de vendas. Stack: React 18 + TypeScript + Vite + Ant Design | Python + FastAPI | PostgreSQL 16. Diretório: `/home/suporte/precificacao/`
 
-Sistema web para precificacao de vendas da unidade Realengo. Composto por frontend React, backend FastAPI e banco PostgreSQL 16 proprio, orquestrados via Docker Compose.
+## Containers
 
-Diretorio: `/home/suporte/precificacao/`
+| Serviço | Container | Porta | Tecnologia |
+|---------|-----------|-------|-----------|
+| `frontend` | `precificacao-frontend` | 3000 | React + Vite |
+| `backend` | `precificacao-backend` | 8001 | FastAPI |
+| `db` | `precificacao-db` | 5434 | PostgreSQL 16 |
 
----
-
-## Stack e Containers
-
-| Container | Tecnologia | Porta | Imagem |
-|-----------|-----------|-------|--------|
-| `precificacao-frontend` | React 18 + TypeScript + Vite + Ant Design | 3000 | Node (build Vite) |
-| `precificacao-backend` | Python 3.x + FastAPI | 8001 | Python slim |
-| `precificacao-db` | PostgreSQL 16 | 5434 | postgres:16 |
-
-Iniciar todos os servicos:
-```bash
-cd /home/suporte/precificacao
-docker compose up -d
-```
-
-Verificar status:
-```bash
-docker compose ps
-docker compose logs --tail=50 precificacao-backend
-```
-
----
+> **Importante:** os nomes dos serviços no `docker-compose.yml` são `frontend`, `backend`, `db` (sem prefixo). Use sempre o path completo:
+> `docker compose -f /home/suporte/precificacao/docker-compose.yml <comando> <serviço>`
 
 ## Fontes de Dados
 
-| Fonte | Caminho | Share de rede | Descricao |
-|-------|---------|--------------|-----------|
-| Qlik Comercial | `/mnt/realengo_planilhas` | `\\192.168.0.222\dados` | Planilhas Excel com dados comerciais e metas |
-| DataLake Realengo | `/mnt/datalake_realengo` | `\\192.168.0.193\...` | Parquets gerados pelo Airflow ETL |
-
-**Arquivo principal:**
-```
-/mnt/realengo_planilhas/Qlik/Comercial/Meta Indicador de Tabela de Frete.xlsx
-```
-
-**Script de mount do Qlik Comercial:**
-```bash
-/home/suporte/setups_mounts/setup_mount_realengo_planilhas.sh
-```
-
-Se o mount estiver ausente, execute o script como root e verifique `/etc/fstab`.
-
----
-
-## Estrutura de Arquivos
-
-```
-/home/suporte/precificacao/
-├── docker-compose.yaml        ← orquestracao dos 3 containers
-├── CLAUDE.md                  ← este arquivo
-├── frontend/                  ← aplicacao React
-│   ├── src/
-│   │   └── pages/App/
-│   │       └── RepresentantesParams/
-│   │           └── index.tsx      ← Aba Parametros de Representantes
-│   ├── package.json
-│   └── vite.config.ts
-├── backend/                   ← API FastAPI
-│   ├── app/
-│   │   ├── models.py              ← User + ParametroRepresentante
-│   │   ├── services/
-│   │   │   ├── excel_reader.py    ← leitura de planilhas/Parquet
-│   │   │   └── representantes_service.py  ← CRUD BD, import parquet, lookup
-│   │   └── routes/
-│   │       ├── prices.py          ← endpoints de precificacao
-│   │       └── representantes.py  ← /representantes/*
-│   ├── requirements.txt
-│   └── Dockerfile
-└── .claude/
-    ├── agents/                ← agentes especializados do projeto
-    └── commands/              ← skills do projeto
-```
-
----
+| Fonte | Caminho |
+|-------|---------|
+| Planilhas (Qlik) | `/mnt/realengo_planilhas` — mount via `setup_mount_realengo_planilhas.sh` |
+| DataLake (Parquet) | `/mnt/datalake_realengo` |
+| Google Drive | `/mnt/realengo_google_drive` |
 
 ## Banco de Dados
 
-- Engine: PostgreSQL 16
-- Host (externo): `192.168.0.236:5434`
-- Host (dentro da rede Docker): `precificacao-db:5432`
-- Banco: definido no `docker-compose.yaml` (verificar variavel `POSTGRES_DB`)
+- Host externo: `192.168.0.236:5434` | Docker interno: `precificacao-db:5432`
+- `docker compose exec db psql -U postgres`
 
-Conectar via psql:
-```bash
-docker compose exec precificacao-db psql -U postgres
-```
-
-### Tabelas
-
-#### `parametros_representante`
+### Tabela `parametros_representante`
 
 ```sql
-CREATE TABLE parametros_representante (
-    id              SERIAL PRIMARY KEY,
-    representante   VARCHAR(120) NOT NULL,
-    data_vigencia   DATE NOT NULL,
-    meta_frete_1    NUMERIC(10,4),
-    meta_frete_2    NUMERIC(10,4),
-    meta_frete_3    NUMERIC(10,4),
-    margem_parbo    NUMERIC(8,6),
-    margem_branco   NUMERIC(8,6),
-    margem_integral NUMERIC(8,6),
-    importado_parquet BOOLEAN NOT NULL DEFAULT FALSE,
-    criado_em       TIMESTAMP DEFAULT NOW(),
-    atualizado_em   TIMESTAMP DEFAULT NOW(),
-    UNIQUE (representante, data_vigencia)  -- constraint: uq_rep_data
-);
+id, representante, data_vigencia, meta_frete_1/2/3, margem_parbo/branco/integral,
+importado_parquet (FALSE = manual, nunca sobrescrito), criado_em, atualizado_em
+UNIQUE (representante, data_vigencia)  -- constraint: uq_rep_data
 ```
 
-Regra: `importado_parquet=FALSE` indica edicao manual — nunca sobrescrito pela importacao automatica.
+### Fluxo de Parâmetros
 
-### Fluxo de Parametros (BD + Parquet)
-
-1. **Startup**: se tabela vazia, importa todos os meses disponiveis do parquet automaticamente
-2. **Calculo de precos** (`/prices/tabela`): busca do BD com `data_vigencia <= hoje`; fallback para parquet se nao encontrar
-3. **Edicao manual**: via aba Parametros → salvo com `importado_parquet=FALSE`
-
-### Comportamento dos Parquets
-
-- Datas como strings `'YYYY-MM-DD HH:MM:SS'` (nao Timestamps)
-- Valores numericos de fretes tambem sao strings (ex: `'18.72'`)
-- `_safe_float()` em `excel_reader.py` aceita strings numericas
-
----
+1. Startup vazio → importa todos os meses do parquet automaticamente
+2. `/prices/tabela` → busca BD (`data_vigencia <= hoje`); fallback parquet
+3. Edição manual → `importado_parquet=FALSE`
 
 ## Endpoints
 
-### `/prices`
+| Rota | Função |
+|------|--------|
+| GET `/prices/tabela` | Tabela completa de precificação |
+| GET `/prices/custo-mp` | Custo MP do dia |
+| GET `/representantes/ativos` | Lista do parquet `fat_representante` |
+| GET `/representantes/parametros?ano=X&mes=Y` | Parâmetros BD + fallback |
+| PUT `/representantes/parametros` | Upsert manual |
+| DELETE `/representantes/parametros/{id}` | Remove vigência |
+| POST `/representantes/importar-parquet?ano=X&mes=Y` | Importa mês do parquet |
 
-| Metodo | Rota | Funcao |
-|--------|------|--------|
-| GET | `/prices/freight-targets` | Metas de frete + margens + comissao por representante |
-| GET | `/prices/custo-mp` | Custo de materia-prima do dia (Empresa 08 e 58) |
-| GET | `/prices/tabela` | Calculo de precos com parametros do BD (fallback parquet) |
+## Rebuild de Containers (obrigatório após mudanças de código)
 
-### `/representantes`
+> `restart` **não recompila** — apenas reinicia com a imagem antiga. Sempre usar `build + up` após editar `.py`, `.tsx` ou `.ts`.
 
-| Metodo | Rota | Funcao |
-|--------|------|--------|
-| GET | `/representantes/ativos` | Lista representantes ativos do parquet `fat_representante` |
-| GET | `/representantes/parametros?ano=X&mes=Y` | Parametros do BD + fallback parquet |
-| PUT | `/representantes/parametros` | Upsert de parametros (edicao manual) |
-| DELETE | `/representantes/parametros/{id}` | Remove vigencia especifica |
-| POST | `/representantes/importar-parquet?ano=X&mes=Y` | Importa mes do parquet para BD |
+```bash
+# Backend
+docker compose -f /home/suporte/precificacao/docker-compose.yml build --no-cache backend
+docker compose -f /home/suporte/precificacao/docker-compose.yml up -d backend
 
----
+# Frontend
+docker compose -f /home/suporte/precificacao/docker-compose.yml build --no-cache frontend
+docker compose -f /home/suporte/precificacao/docker-compose.yml up -d frontend
 
-## Padrao de Desenvolvimento
-
-### Backend (FastAPI)
-- Endpoints REST em `backend/app/routes/`
-- Variaveis de ambiente via `.env` ou `docker-compose.yaml` — nunca hardcodar credenciais
-- Leitura de Excel com `pandas` + `openpyxl`; Parquet com `pyarrow`
-- Conexao com PostgreSQL via `SQLAlchemy` ou `asyncpg`
-
-### Frontend (React + TypeScript)
-- Componentes de UI: Ant Design (`antd`)
-- Bundler: Vite
-- Chamadas de API via `fetch` ou `axios` apontando para `http://192.168.0.236:8001`
-- Tipagem estrita: evitar `any`
-
-### Convencoes gerais
-- Portugues brasileiro nos comentarios e documentacao
-- Nao commitar arquivos `.env` com credenciais reais
-- Migrations de banco documentadas em comentarios ou arquivo dedicado
-
----
-
-## Padroes Obrigatorios
-
-- Nunca hardcodar IPs, senhas ou tokens no codigo
-- Variaveis de ambiente definidas no `docker-compose.yaml` ou `.env` (ignorado pelo git)
-- Logs estruturados no backend (usar `logging` padrao ou `loguru`)
-- O mount `/mnt/realengo_planilhas` deve estar ativo antes de qualquer leitura do Excel
-
----
-
-## Agentes e Skills
-
-| Agente / Skill | Arquivo | Uso |
-|----------------|---------|-----|
-| `precificacao-expert` | `~/.claude/agents/precificacao-expert.md` | Especialista no projeto — React, FastAPI, PostgreSQL, Docker |
-
-> Consulte o agente `precificacao-expert` para tarefas de frontend, backend, banco de dados ou integração com fontes de dados.
-
----
+# Tudo
+docker compose -f /home/suporte/precificacao/docker-compose.yml build --no-cache
+docker compose -f /home/suporte/precificacao/docker-compose.yml up -d
+```
 
 ## Troubleshooting
 
-| Problema | Causa Provavel | Solucao |
-|----------|---------------|---------|
-| `FileNotFoundError` no Excel | Mount ausente | Rodar `setup_mount_realengo_planilhas.sh` |
-| Frontend 502/CORS | Backend fora do ar | `docker compose restart precificacao-backend` |
-| Porta 5434 recusada | DB nao subiu | `docker compose up -d precificacao-db` e checar logs |
-| `ModuleNotFoundError` no backend | Dependencia faltando | `docker compose build precificacao-backend` |
-| Dados desatualizados | Planilha do Qlik nao foi renovada | Verificar data de modificacao em `/mnt/realengo_planilhas/Qlik/Comercial/` |
-| Parametros do BD nao aparecem no calculo | `data_vigencia` maior que hoje | Verificar datas na aba Parametros |
-| Tabela `parametros_representante` nao existe | Banco nao recriou | `docker compose restart precificacao-backend` |
-| Valores de 2021 sem margens | Parquet de margens so tem meses recentes | Normal — apenas fretes foram importados para periodos antigos |
+| Problema | Solução |
+|----------|---------|
+| Mudanças no código não aparecem | Rebuild obrigatório (ver seção acima) |
+| Mount ausente | `setup_mount_realengo_planilhas.sh` |
+| Backend fora do ar (502) | `docker compose ... restart backend` |
+| Porta 5434 recusada | `docker compose ... up -d db` |
+| Dados desatualizados | Verificar DAG `extract_planilhas` no Airflow |
+| `data_vigencia` futura | Parâmetros não aparecem no cálculo — verificar datas na aba Parâmetros |
+
+## Padrões
+
+- Nunca hardcodar IPs/senhas — usar variáveis de ambiente do `docker-compose.yml`
+- Português nos comentários; não commitar `.env`
+- Parquets: datas como strings `'YYYY-MM-DD HH:MM:SS'`; números também como strings → `_safe_float()`
+
+## Agentes
+
+| Agente | Uso |
+|--------|-----|
+| `precificacao-expert` (`~/.claude/agents/`) | Frontend, backend, banco, Docker |
+
+---
+
+## Histórico de Versões (Changelog)
+
+Ao final de sessões com mudanças, pergunte se deseja registrar e sugira a próxima versão.
+
+**SemVer:** PATCH = bug fix · MINOR = nova feature · MAJOR = breaking change
+**Tipos:** `adicionado` · `corrigido` · `modificado` · `removido`
+
+```bash
+# Consultar última versão
+docker exec precificacao-db sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "SELECT versao, data_lancamento FROM changelog_entries ORDER BY id DESC LIMIT 1;"'
+
+# Inserir entrada
+docker exec precificacao-db sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -c "
+INSERT INTO changelog_entries (versao, data_lancamento, tipo, titulo, descricao, criado_em, criado_por) VALUES
+('"'"'X.Y.Z'"'"', '"'"'YYYY-MM-DD'"'"', '"'"'tipo'"'"', '"'"'Titulo'"'"', '"'"'Descricao'"'"', NOW(), '"'"'usuario'"'"');"'
+```

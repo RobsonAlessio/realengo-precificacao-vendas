@@ -1,10 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Table, Select, Switch, Tag, message, Modal, Form, Input, Button, Tabs, Tooltip } from 'antd'
+import { Table, Select, Switch, Tag, message, Modal, Form, Input, Button, Tabs, Tooltip, Popconfirm, DatePicker } from 'antd'
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { Typography } from 'antd'
+import dayjs from 'dayjs'
 import api from '../../api/client'
 
 const { Text } = Typography
+const { TextArea } = Input
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -28,6 +31,19 @@ interface AuditLogRow {
   created_at: string | null
 }
 
+type ChangelogTipo = 'adicionado' | 'corrigido' | 'modificado' | 'removido'
+
+interface ChangelogEntry {
+  id: number
+  versao: string
+  data_lancamento: string
+  tipo: ChangelogTipo
+  titulo: string
+  descricao: string | null
+  criado_em: string | null
+  criado_por: string | null
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -44,6 +60,9 @@ const ACTION_LABELS: Record<string, string> = {
   PARAM_DELETE:           'Parâmetro removido',
   PARQUET_IMPORT:         'Importação parquet',
   CONFIG_UPDATE:          'Configuração atualizada',
+  CHANGELOG_CREATE:       'Changelog adicionado',
+  CHANGELOG_UPDATE:       'Changelog editado',
+  CHANGELOG_DELETE:       'Changelog removido',
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -58,10 +77,23 @@ const STATUS_LABEL: Record<string, string> = {
   warning: 'Aviso',
 }
 
+const TIPO_CONFIG: Record<ChangelogTipo, { label: string; color: string; bg: string; border: string }> = {
+  adicionado: { label: 'Adicionado',  color: '#15803d', bg: '#f0fdf4', border: '#86efac' },
+  corrigido:  { label: 'Corrigido',   color: '#b91c1c', bg: '#fef2f2', border: '#fca5a5' },
+  modificado: { label: 'Modificado',  color: '#1d4ed8', bg: '#eff6ff', border: '#93c5fd' },
+  removido:   { label: 'Removido',    color: '#374151', bg: '#f9fafb', border: '#d1d5db' },
+}
+
+const TIPO_OPTIONS: { value: ChangelogTipo; label: string }[] = [
+  { value: 'adicionado', label: 'Adicionado' },
+  { value: 'corrigido',  label: 'Corrigido'  },
+  { value: 'modificado', label: 'Modificado' },
+  { value: 'removido',   label: 'Removido'   },
+]
+
 function formatMetadata(meta: Record<string, unknown> | null, action?: string): { summary: string; tooltip: string | null } {
   if (!meta || Object.keys(meta).length === 0) return { summary: '—', tooltip: null }
 
-  // PARAM_UPDATE: mostra resumo + tooltip com detalhes de cada registro
   if (action === 'PARAM_UPDATE' && Array.isArray(meta.registros)) {
     const regs = meta.registros as Array<Record<string, unknown>>
     const names = regs.map(r => r.representante as string)
@@ -81,19 +113,29 @@ function formatMetadata(meta: Record<string, unknown> | null, action?: string): 
     return { summary, tooltip }
   }
 
-  // PARAM_DELETE: mostra representante + vigência
   if (action === 'PARAM_DELETE' && meta.representante) {
     const vig = meta.vigencia ? ` (${meta.vigencia})` : ''
     return { summary: `${meta.representante}${vig}`, tooltip: null }
   }
 
-  // Demais ações: key: value genérico
   const skip = new Set(['updated_by', 'deleted_by', 'changed_by', 'created_by', 'count', 'registros'])
   const summary = Object.entries(meta)
     .filter(([k]) => !skip.has(k))
     .map(([k, v]) => `${k}: ${v}`)
     .join(' · ') || '—'
   return { summary, tooltip: null }
+}
+
+// Agrupa entradas do changelog por versão
+function groupByVersion(entries: ChangelogEntry[]): { versao: string; data: string; items: ChangelogEntry[] }[] {
+  const map = new Map<string, { versao: string; data: string; items: ChangelogEntry[] }>()
+  for (const e of entries) {
+    if (!map.has(e.versao)) {
+      map.set(e.versao, { versao: e.versao, data: e.data_lancamento, items: [] })
+    }
+    map.get(e.versao)!.items.push(e)
+  }
+  return Array.from(map.values())
 }
 
 // ---------------------------------------------------------------------------
@@ -116,6 +158,15 @@ function IconLog() {
       <line x1="16" y1="13" x2="8" y2="13"/>
       <line x1="16" y1="17" x2="8" y2="17"/>
       <polyline points="10 9 9 9 8 9"/>
+    </svg>
+  )
+}
+
+function IconChangelog() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1d4e89" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <polyline points="12 6 12 12 16 14"/>
     </svg>
   )
 }
@@ -158,6 +209,15 @@ export default function AdminPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
+  // — Changelog —
+  const [changelogEntries, setChangelogEntries] = useState<ChangelogEntry[]>([])
+  const [changelogLoading, setChangelogLoading] = useState(false)
+  const [changelogFetched, setChangelogFetched] = useState(false)
+  const [clModalOpen, setClModalOpen] = useState(false)
+  const [clEditing, setClEditing] = useState<ChangelogEntry | null>(null)
+  const [clSaving, setClSaving] = useState(false)
+  const [clForm] = Form.useForm()
+
   // — Aba ativa —
   const [activeTab, setActiveTab] = useState('usuarios')
 
@@ -193,6 +253,18 @@ export default function AdminPage() {
     }
   }, [dateFrom, dateTo])
 
+  const fetchChangelog = useCallback(async () => {
+    setChangelogLoading(true)
+    try {
+      const { data } = await api.get<ChangelogEntry[]>('/changelog')
+      setChangelogEntries(data)
+    } catch {
+      message.error('Erro ao carregar histórico de versões')
+    } finally {
+      setChangelogLoading(false)
+    }
+  }, [])
+
   useEffect(() => { fetchUsers() }, [fetchUsers])
 
   function handleTabChange(key: string) {
@@ -200,6 +272,10 @@ export default function AdminPage() {
     if (key === 'logs' && !logsFetched) {
       fetchLogs()
       setLogsFetched(true)
+    }
+    if (key === 'changelog' && !changelogFetched) {
+      fetchChangelog()
+      setChangelogFetched(true)
     }
   }
 
@@ -260,6 +336,60 @@ export default function AdminPage() {
       message.error(err?.response?.data?.detail ?? 'Erro ao alterar senha')
     } finally {
       setPwLoading(false)
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Ações de changelog
+  // ---------------------------------------------------------------------------
+
+  function openClModal(entry?: ChangelogEntry) {
+    setClEditing(entry ?? null)
+    if (entry) {
+      clForm.setFieldsValue({
+        versao: entry.versao,
+        data_lancamento: dayjs(entry.data_lancamento),
+        tipo: entry.tipo,
+        titulo: entry.titulo,
+        descricao: entry.descricao ?? '',
+      })
+    } else {
+      clForm.resetFields()
+    }
+    setClModalOpen(true)
+  }
+
+  async function handleClSave(values: any) {
+    setClSaving(true)
+    try {
+      const payload = {
+        ...values,
+        data_lancamento: values.data_lancamento?.format('YYYY-MM-DD'),
+      }
+      if (clEditing) {
+        const { data } = await api.put<ChangelogEntry>(`/changelog/${clEditing.id}`, payload)
+        setChangelogEntries(prev => prev.map(e => e.id === clEditing.id ? data : e))
+        message.success('Entrada atualizada')
+      } else {
+        const { data } = await api.post<ChangelogEntry>('/changelog', payload)
+        setChangelogEntries(prev => [data, ...prev])
+        message.success('Entrada adicionada')
+      }
+      setClModalOpen(false)
+    } catch (err: any) {
+      message.error(err?.response?.data?.detail ?? 'Erro ao salvar entrada')
+    } finally {
+      setClSaving(false)
+    }
+  }
+
+  async function handleClDelete(id: number) {
+    try {
+      await api.delete(`/changelog/${id}`)
+      setChangelogEntries(prev => prev.filter(e => e.id !== id))
+      message.success('Entrada removida')
+    } catch {
+      message.error('Erro ao remover entrada')
     }
   }
 
@@ -467,6 +597,144 @@ export default function AdminPage() {
   ]
 
   // ---------------------------------------------------------------------------
+  // Changelog — renderização agrupada por versão
+  // ---------------------------------------------------------------------------
+
+  function renderChangelog() {
+    if (changelogLoading) {
+      return (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0', color: '#94a3b8', fontFamily: 'Inter, sans-serif', fontSize: 13 }}>
+          Carregando histórico...
+        </div>
+      )
+    }
+    if (changelogEntries.length === 0) {
+      return (
+        <div style={{ textAlign: 'center', padding: '48px 0', color: '#94a3b8', fontFamily: 'Inter, sans-serif' }}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>📋</div>
+          <div style={{ fontSize: 14, marginBottom: 6 }}>Nenhuma entrada no histórico de versões.</div>
+          <div style={{ fontSize: 12 }}>Clique em "Novo Registro" para adicionar a primeira entrada.</div>
+        </div>
+      )
+    }
+
+    const groups = groupByVersion(changelogEntries)
+
+    return (
+      <div style={{ overflowY: 'auto', height: 'calc(100vh - 220px)', paddingRight: 4 }}>
+        {groups.map((group, gi) => (
+          <div key={group.versao} style={{ marginBottom: gi < groups.length - 1 ? 28 : 0 }}>
+            {/* Cabeçalho da versão */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <div style={{
+                background: '#0f1f3d',
+                color: '#fff',
+                borderRadius: 8,
+                padding: '4px 12px',
+                fontFamily: 'Outfit, sans-serif',
+                fontWeight: 700,
+                fontSize: 14,
+                letterSpacing: '0.01em',
+                flexShrink: 0,
+              }}>
+                {group.versao}
+              </div>
+              <div style={{ height: 1, flex: 1, background: '#e2e8f0' }} />
+              <span style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'Inter, sans-serif', flexShrink: 0 }}>
+                {new Date(group.data + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+              </span>
+            </div>
+
+            {/* Entradas desta versão */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 4 }}>
+              {group.items.map(entry => {
+                const cfg = TIPO_CONFIG[entry.tipo as ChangelogTipo] ?? TIPO_CONFIG.modificado
+                return (
+                  <div
+                    key={entry.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 10,
+                      padding: '10px 14px',
+                      background: '#fafafa',
+                      border: '1px solid #f1f5f9',
+                      borderRadius: 10,
+                      transition: 'border-color 0.15s',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = '#bfdbfe')}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = '#f1f5f9')}
+                  >
+                    {/* Badge tipo */}
+                    <span style={{
+                      flexShrink: 0,
+                      marginTop: 1,
+                      background: cfg.bg,
+                      border: `1px solid ${cfg.border}`,
+                      color: cfg.color,
+                      borderRadius: 6,
+                      padding: '2px 8px',
+                      fontSize: 11,
+                      fontFamily: 'Inter, sans-serif',
+                      fontWeight: 600,
+                      letterSpacing: '0.02em',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {cfg.label}
+                    </span>
+
+                    {/* Conteúdo */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: 13, color: '#1e293b', lineHeight: 1.4 }}>
+                        {entry.titulo}
+                      </div>
+                      {entry.descricao && (
+                        <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#64748b', marginTop: 3, lineHeight: 1.5 }}>
+                          {entry.descricao}
+                        </div>
+                      )}
+                      {entry.criado_por && (
+                        <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 4, fontFamily: 'Inter, sans-serif' }}>
+                          por {entry.criado_por}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Ações */}
+                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                      <Tooltip title="Editar">
+                        <Button
+                          size="small"
+                          type="text"
+                          icon={<EditOutlined />}
+                          onClick={() => openClModal(entry)}
+                          style={{ color: '#64748b' }}
+                        />
+                      </Tooltip>
+                      <Popconfirm
+                        title="Remover esta entrada?"
+                        description="Esta ação não pode ser desfeita."
+                        onConfirm={() => handleClDelete(entry.id)}
+                        okText="Remover"
+                        okButtonProps={{ danger: true }}
+                        cancelText="Cancelar"
+                      >
+                        <Tooltip title="Remover">
+                          <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                        </Tooltip>
+                      </Popconfirm>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
 
@@ -494,7 +762,6 @@ export default function AdminPage() {
       ),
       children: (
         <>
-          {/* Alerta de pendentes */}
           {pendingCount > 0 && (
             <div style={{
               background: '#fefce8',
@@ -517,7 +784,6 @@ export default function AdminPage() {
               </div>
             </div>
           )}
-
           <Table
             className="admin-table"
             columns={userColumns}
@@ -543,7 +809,6 @@ export default function AdminPage() {
       ),
       children: (
         <>
-          {/* Filtro de data */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, color: '#64748b', fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap' }}>
               Período:
@@ -600,7 +865,6 @@ export default function AdminPage() {
               </span>
             )}
           </div>
-
           <Table
             className="admin-table"
             columns={logColumns}
@@ -615,6 +879,16 @@ export default function AdminPage() {
           />
         </>
       ),
+    },
+    {
+      key: 'changelog',
+      label: (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'Inter, sans-serif', fontSize: 13 }}>
+          <IconChangelog />
+          Histórico de Versões
+        </span>
+      ),
+      children: renderChangelog(),
     },
   ]
 
@@ -659,18 +933,10 @@ export default function AdminPage() {
               onClick={() => { setCreateModalOpen(true); createForm.resetFields() }}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '7px 14px',
-                borderRadius: 10,
-                border: '1px solid #bfdbfe',
-                background: '#eff6ff',
-                color: '#1d4e89',
-                fontSize: 13,
-                fontFamily: 'Inter, sans-serif',
-                fontWeight: 500,
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                outline: 'none',
-                whiteSpace: 'nowrap',
+                padding: '7px 14px', borderRadius: 10,
+                border: '1px solid #bfdbfe', background: '#eff6ff',
+                color: '#1d4e89', fontSize: 13, fontFamily: 'Inter, sans-serif',
+                fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s', outline: 'none', whiteSpace: 'nowrap',
               }}
               onMouseEnter={e => { e.currentTarget.style.background = '#dbeafe' }}
               onMouseLeave={e => { e.currentTarget.style.background = '#eff6ff' }}
@@ -682,35 +948,55 @@ export default function AdminPage() {
             </button>
           )}
 
+          {activeTab === 'changelog' && (
+            <button
+              onClick={() => openClModal()}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '7px 14px', borderRadius: 10,
+                border: '1px solid #bbf7d0', background: '#f0fdf4',
+                color: '#166534', fontSize: 13, fontFamily: 'Inter, sans-serif',
+                fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s', outline: 'none', whiteSpace: 'nowrap',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#dcfce7' }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#f0fdf4' }}
+            >
+              <PlusOutlined style={{ fontSize: 13 }} />
+              Novo Registro
+            </button>
+          )}
+
           <button
-            onClick={activeTab === 'usuarios' ? fetchUsers : () => fetchLogs()}
-            disabled={activeTab === 'usuarios' ? loading : logsLoading}
+            onClick={
+              activeTab === 'usuarios' ? fetchUsers
+              : activeTab === 'changelog' ? fetchChangelog
+              : () => fetchLogs()
+            }
+            disabled={
+              activeTab === 'usuarios' ? loading
+              : activeTab === 'changelog' ? changelogLoading
+              : logsLoading
+            }
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '7px 14px',
-              borderRadius: 10,
-              border: '1px solid #e2e8f0',
-              background: '#fff',
-              color: '#475569',
-              fontSize: 13,
-              fontFamily: 'Inter, sans-serif',
+              padding: '7px 14px', borderRadius: 10,
+              border: '1px solid #e2e8f0', background: '#fff',
+              color: '#475569', fontSize: 13, fontFamily: 'Inter, sans-serif',
               fontWeight: 500,
-              cursor: (activeTab === 'usuarios' ? loading : logsLoading) ? 'not-allowed' : 'pointer',
-              opacity: (activeTab === 'usuarios' ? loading : logsLoading) ? 0.65 : 1,
-              transition: 'all 0.2s',
-              outline: 'none',
-              whiteSpace: 'nowrap',
+              cursor: (activeTab === 'usuarios' ? loading : activeTab === 'changelog' ? changelogLoading : logsLoading) ? 'not-allowed' : 'pointer',
+              opacity: (activeTab === 'usuarios' ? loading : activeTab === 'changelog' ? changelogLoading : logsLoading) ? 0.65 : 1,
+              transition: 'all 0.2s', outline: 'none', whiteSpace: 'nowrap',
             }}
             onMouseEnter={e => { e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.color = '#1d4e89' }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#475569' }}
           >
-            <IconRefresh spinning={activeTab === 'usuarios' ? loading : logsLoading} />
-            {(activeTab === 'usuarios' ? loading : logsLoading) ? 'Atualizando...' : 'Atualizar'}
+            <IconRefresh spinning={activeTab === 'usuarios' ? loading : activeTab === 'changelog' ? changelogLoading : logsLoading} />
+            {(activeTab === 'usuarios' ? loading : activeTab === 'changelog' ? changelogLoading : logsLoading) ? 'Atualizando...' : 'Atualizar'}
           </button>
         </div>
       </div>
 
-      {/* Modais */}
+      {/* Modais — Usuários */}
       <Modal
         title="Novo Usuário Local"
         open={createModalOpen}
@@ -757,6 +1043,80 @@ export default function AdminPage() {
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <Button onClick={() => { setPwModalUser(null); pwForm.resetFields() }}>Cancelar</Button>
             <Button type="primary" htmlType="submit" loading={pwLoading}>Salvar</Button>
+          </div>
+        </Form>
+      </Modal>
+
+      {/* Modal — Changelog */}
+      <Modal
+        title={clEditing ? 'Editar Registro' : 'Novo Registro de Versão'}
+        open={clModalOpen}
+        onCancel={() => setClModalOpen(false)}
+        footer={null}
+        destroyOnClose
+        width={520}
+      >
+        <Form form={clForm} layout="vertical" onFinish={handleClSave} style={{ marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <Form.Item
+              label="Versão"
+              name="versao"
+              rules={[{ required: true, message: 'Informe a versão' }]}
+              style={{ flex: 1 }}
+              tooltip="Exemplo: 1.2.0 ou 2026-04-10"
+            >
+              <Input placeholder="ex: 1.2.0" />
+            </Form.Item>
+            <Form.Item
+              label="Data de lançamento"
+              name="data_lancamento"
+              rules={[{ required: true, message: 'Informe a data' }]}
+              style={{ flex: 1 }}
+            >
+              <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+            </Form.Item>
+          </div>
+          <Form.Item
+            label="Tipo"
+            name="tipo"
+            rules={[{ required: true, message: 'Selecione o tipo' }]}
+          >
+            <Select
+              options={TIPO_OPTIONS.map(o => ({
+                value: o.value,
+                label: (
+                  <span style={{
+                    color: TIPO_CONFIG[o.value].color,
+                    fontWeight: 500,
+                    fontSize: 13,
+                  }}>
+                    {o.label}
+                  </span>
+                ),
+              }))}
+              placeholder="Selecionar tipo..."
+            />
+          </Form.Item>
+          <Form.Item
+            label="Título"
+            name="titulo"
+            rules={[{ required: true, message: 'Informe o título' }]}
+          >
+            <Input placeholder="Resumo breve da mudança" maxLength={200} showCount />
+          </Form.Item>
+          <Form.Item label="Descrição" name="descricao">
+            <TextArea
+              placeholder="Detalhes adicionais (opcional)..."
+              rows={3}
+              maxLength={1000}
+              showCount
+            />
+          </Form.Item>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Button onClick={() => setClModalOpen(false)}>Cancelar</Button>
+            <Button type="primary" htmlType="submit" loading={clSaving}>
+              {clEditing ? 'Salvar alterações' : 'Adicionar'}
+            </Button>
           </div>
         </Form>
       </Modal>

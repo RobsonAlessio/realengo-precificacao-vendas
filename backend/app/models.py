@@ -26,6 +26,40 @@ class AuditLog(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+class ChangelogEntry(Base):
+    __tablename__ = "changelog_entries"
+
+    id               = Column(Integer, primary_key=True, index=True)
+    versao           = Column(String(30), nullable=False, index=True)
+    data_lancamento  = Column(Date, nullable=False, index=True)
+    tipo             = Column(String(20), nullable=False)   # adicionado | corrigido | modificado | removido
+    titulo           = Column(String(200), nullable=False)
+    descricao        = Column(String, nullable=True)
+    criado_em        = Column(DateTime, default=datetime.utcnow)
+    criado_por       = Column(String(100), nullable=True)
+
+
+class ParametroGeral(Base):
+    __tablename__ = "parametros_gerais"
+
+    id               = Column(Integer, primary_key=True, index=True)
+    data_vigencia    = Column(Date, nullable=False, index=True)
+    mp_parbo_saco    = Column(Numeric(10, 4), nullable=True)
+    mp_branco_saco   = Column(Numeric(10, 4), nullable=True)
+    embalagem_parbo  = Column(Numeric(10, 4), nullable=True)
+    embalagem_branco = Column(Numeric(10, 4), nullable=True)
+    energia_parbo    = Column(Numeric(10, 4), nullable=True)
+    energia_branco   = Column(Numeric(10, 4), nullable=True)
+    renda_parbo      = Column(Numeric(8, 6),  nullable=True)
+    renda_branco     = Column(Numeric(8, 6),  nullable=True)
+    criado_em        = Column(DateTime, default=datetime.utcnow)
+    atualizado_em    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("data_vigencia", name="uq_param_geral_data"),
+    )
+
+
 class ParametroRepresentante(Base):
     __tablename__ = "parametros_representante"
 

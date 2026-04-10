@@ -64,10 +64,10 @@ function IconChevronRight({ color = 'currentColor' }: { color?: string }) {
 // ── Menu items ────────────────────────────────────────────────────────────────
 const BASE_MENU = [
   { key: 'prices',    Icon: IconTable,    label: 'Tabela de Preços' },
-  { key: 'simulator', Icon: IconBarChart, label: 'Simulador de Vendas' },
+  { key: 'simulator', Icon: IconBarChart, label: 'Simulador de Preço' },
   { key: 'params',    Icon: IconUsers,    label: 'Parâmetros' },
 ]
-const ADMIN_ITEM = { key: 'admin', Icon: IconShield, label: 'Usuários' }
+const ADMIN_ITEM = { key: 'admin', Icon: IconShield, label: 'Administração' }
 
 function NavBtn({
   isActive, isCollapsed, Icon, label, onClick,

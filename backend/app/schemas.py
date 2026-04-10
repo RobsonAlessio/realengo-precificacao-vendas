@@ -84,3 +84,63 @@ class ImportarParquetResponse(BaseModel):
     importados: int
     pulados: int
     erros: list[str]
+
+
+class ParametroGeralBase(BaseModel):
+    data_vigencia: date
+    mp_parbo_saco:    Optional[float] = None
+    mp_branco_saco:   Optional[float] = None
+    embalagem_parbo:  Optional[float] = None
+    embalagem_branco: Optional[float] = None
+    energia_parbo:    Optional[float] = None
+    energia_branco:   Optional[float] = None
+    renda_parbo:      Optional[float] = None
+    renda_branco:     Optional[float] = None
+
+
+class ParametroGeralCreate(ParametroGeralBase):
+    pass
+
+
+class ParametroGeralResponse(ParametroGeralBase):
+    id: int
+    criado_em: datetime
+    atualizado_em: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ParametrosGeraisListResponse(BaseModel):
+    mes: str
+    vigencias: list[ParametroGeralResponse]
+
+
+class ChangelogEntryCreate(BaseModel):
+    versao: str
+    data_lancamento: date
+    tipo: str   # adicionado | corrigido | modificado | removido
+    titulo: str
+    descricao: Optional[str] = None
+
+
+class ChangelogEntryUpdate(BaseModel):
+    versao: Optional[str] = None
+    data_lancamento: Optional[date] = None
+    tipo: Optional[str] = None
+    titulo: Optional[str] = None
+    descricao: Optional[str] = None
+
+
+class ChangelogEntryResponse(BaseModel):
+    id: int
+    versao: str
+    data_lancamento: date
+    tipo: str
+    titulo: str
+    descricao: Optional[str] = None
+    criado_em: datetime
+    criado_por: Optional[str] = None
+
+    class Config:
+        from_attributes = True

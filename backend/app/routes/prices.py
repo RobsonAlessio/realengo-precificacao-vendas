@@ -94,6 +94,17 @@ def tabela(
     mp = get_custo_mp()
     custo_prod = _get_custo_producao()
 
+    # Período de referência dos impostos (3 meses anteriores ao mês atual)
+    hoje = date.today()
+    _meses_ant = []
+    for i in range(1, 4):
+        _m, _a = hoje.month - i, hoje.year
+        while _m <= 0:
+            _m += 12
+            _a -= 1
+        _meses_ant.append((_a, _m))
+    periodo_impostos = f"{_meses_ant[2][0]}-{_meses_ant[2][1]:02d} a {_meses_ant[0][0]}-{_meses_ant[0][1]:02d}"
+
     mp08p    = mp.get("empresa_08", {}).get("parbo")
     mp08i    = mp.get("empresa_08", {}).get("integral")
     mp58b    = mp.get("empresa_58", {}).get("branco")
@@ -124,13 +135,43 @@ def tabela(
 
     rows = apply_calculos(rows, mp, config)
 
+    # Parâmetros gerais vigentes hoje (para uso de fonte "parametrizado" no frontend)
+    pg = (
+        db.query(models.ParametroGeral)
+        .filter(models.ParametroGeral.data_vigencia <= hoje)
+        .order_by(models.ParametroGeral.data_vigencia.desc())
+        .first()
+    )
+    parametros_gerais = None
+    if pg:
+        def _f(v): return float(v) if v is not None else None
+        rp = _f(pg.renda_parbo)
+        rb = _f(pg.renda_branco)
+        mps = _f(pg.mp_parbo_saco)
+        mbs = _f(pg.mp_branco_saco)
+        parametros_gerais = {
+            "data_vigencia":    str(pg.data_vigencia),
+            "mp_parbo_saco":    mps,
+            "mp_branco_saco":   mbs,
+            "mp_parbo_fardo":   round(mps * 30 / (rp * 50), 4) if mps and rp else None,
+            "mp_branco_fardo":  round(mbs * 30 / (rb * 50), 4) if mbs and rb else None,
+            "embalagem_parbo":  _f(pg.embalagem_parbo),
+            "embalagem_branco": _f(pg.embalagem_branco),
+            "energia_parbo":    _f(pg.energia_parbo),
+            "energia_branco":   _f(pg.energia_branco),
+            "renda_parbo":      rp,
+            "renda_branco":     rb,
+        }
+
     return {
-        "colunas"         : config.get("colunas", []),
-        "calculos_ativos" : [c for c in config.get("calculos", []) if c.get("ativo", False)],
-        "dados"           : rows,
-        "custo_mp"        : mp,
-        "custo_producao"  : custo_prod,
-        "mes"             : mes_ref,
+        "colunas"           : config.get("colunas", []),
+        "calculos_ativos"   : [c for c in config.get("calculos", []) if c.get("ativo", False)],
+        "dados"             : rows,
+        "custo_mp"          : mp,
+        "custo_producao"    : custo_prod,
+        "mes"               : mes_ref,
+        "impostos"          : {"periodo": periodo_impostos},
+        "parametros_gerais" : parametros_gerais,
     }
 
 

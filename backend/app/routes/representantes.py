@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app import models, auth as auth_utils, schemas
@@ -106,12 +106,25 @@ def save_parametros(
 def delete_parametro(
     param_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = auth_utils.require_role("admin"),
+    current_user: models.User = Depends(auth_utils.get_current_user),
 ):
-    """Remove um registro de parâmetro pelo ID. Requer role admin."""
+    """Remove um registro de parâmetro pelo ID.
+    - Admin: pode excluir qualquer vigência.
+    - Editor: pode excluir apenas vigências a partir da data atual.
+    """
+    if current_user.role not in ("admin", "editor"):
+        raise HTTPException(status_code=403, detail="Permissão insuficiente")
+
     record = db.query(models.ParametroRepresentante).filter_by(id=param_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Registro não encontrado")
+
+    if current_user.role == "editor":
+        today = date.today()
+        vigencia_date = record.data_vigencia if isinstance(record.data_vigencia, date) else date.fromisoformat(str(record.data_vigencia)[:10])
+        if vigencia_date < today:
+            raise HTTPException(status_code=403, detail="Editor não pode excluir vigências de datas passadas")
+
     rep_nome = record.representante
     rep_vigencia = str(record.data_vigencia)[:7]
     db.delete(record)

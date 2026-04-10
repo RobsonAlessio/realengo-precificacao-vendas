@@ -281,7 +281,13 @@ def get_custo_mp() -> dict:
         v08 = _safe_float(row.iloc[0]["valor_08"])
         v58 = _safe_float(row.iloc[0]["valor_58"])
 
-        renda = get_renda_processo(hoje.year, hoje.month)
+        # Renda: sempre usa o mês anterior (laudos do mês atual ainda não estão fechados)
+        mes_ant = hoje.month - 1
+        ano_ant = hoje.year
+        if mes_ant <= 0:
+            mes_ant = 12
+            ano_ant -= 1
+        renda = get_renda_processo(ano_ant, mes_ant)
 
         avisos = [a for a in [aviso, renda.get("aviso")] if a]
 
