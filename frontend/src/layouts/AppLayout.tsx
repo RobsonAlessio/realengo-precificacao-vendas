@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useAuthStore } from '../store/authStore'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
+import { Drawer } from 'antd'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const SIDEBAR_BG = '#0f1f3d'
 
@@ -57,6 +59,15 @@ function IconChevronRight({ color = 'currentColor' }: { color?: string }) {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="9 18 15 12 9 6"/>
+    </svg>
+  )
+}
+function IconMenu({ color = 'currentColor' }: { color?: string }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="3" y1="6" x2="21" y2="6"/>
+      <line x1="3" y1="12" x2="21" y2="12"/>
+      <line x1="3" y1="18" x2="21" y2="18"/>
     </svg>
   )
 }
@@ -121,187 +132,175 @@ function NavBtn({
   )
 }
 
-// ── Componente principal ──────────────────────────────────────────────────────
-export default function AppLayout() {
-  const user = useAuthStore((s) => s.user)
-  const logout = useAuthStore((s) => s.logout)
-  const navigate = useNavigate()
-  const location = useLocation()
-  
-  const activeKey = location.pathname.split('/').filter(Boolean).pop() || 'prices'
-  const menuItems = user?.role === 'admin' ? [...BASE_MENU, ADMIN_ITEM] : BASE_MENU
-
-  const [collapsed, setCollapsed] = useState(false)
+// ── Conteúdo da sidebar (reutilizado no aside desktop e no Drawer mobile) ────
+function SidebarContent({
+  collapsed,
+  menuItems,
+  activeKey,
+  onNavigate,
+  user,
+  initials,
+  onLogout,
+  onToggleCollapse,
+  showCollapseBtn,
+}: {
+  collapsed: boolean
+  menuItems: { key: string; Icon: (p: { color?: string }) => JSX.Element; label: string }[]
+  activeKey: string
+  onNavigate: (key: string) => void
+  user: { username: string; role: string | null } | null
+  initials: string
+  onLogout: () => void
+  onToggleCollapse?: () => void
+  showCollapseBtn: boolean
+}) {
   const [hoverLogout, setHoverLogout] = useState(false)
   const [hoverCollapse, setHoverCollapse] = useState(false)
 
-  function handleLogout() {
-    logout()
-    navigate('/login')
-  }
-
-  const initials = user?.username ? user.username.slice(0, 2).toUpperCase() : 'U'
-
   return (
     <div style={{
-      width: '100%',
-      height: '100vh',
       display: 'flex',
-      background: '#f0f4f8',
-      overflow: 'hidden',
+      flexDirection: 'column',
+      height: '100%',
+      background: SIDEBAR_BG,
     }}>
-
-      {/* ── Sidebar — colada nas bordas esquerda/topo/baixo, arredondada à direita ── */}
-      <aside style={{
-        width: collapsed ? 68 : 220,
-        minWidth: collapsed ? 68 : 220,
-        background: SIDEBAR_BG,
-        borderRadius: '0 20px 20px 0',
-        height: '100vh',
+      {/* Logo */}
+      <div style={{
+        height: 64,
         display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        boxShadow: '4px 0 20px rgba(0,0,0,0.15)',
-        transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1), min-width 0.25s cubic-bezier(0.4,0,0.2,1)',
+        alignItems: 'center',
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        padding: collapsed ? '0' : '0 16px',
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
         flexShrink: 0,
       }}>
-
-        {/* Logo */}
-        <div style={{
-          height: 64,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: collapsed ? 'center' : 'flex-start',
-          padding: collapsed ? '0' : '0 16px',
-          borderBottom: '1px solid rgba(255,255,255,0.07)',
-          flexShrink: 0,
-        }}>
-          {collapsed ? (
+        {collapsed ? (
+          <div style={{
+            width: 36, height: 36,
+            borderRadius: 11,
+            background: 'rgba(59,130,246,0.12)',
+            border: '1px solid rgba(96,165,250,0.22)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 15, color: '#60a5fa' }}>P</span>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{
-              width: 36, height: 36,
-              borderRadius: 11,
+              width: 32, height: 32,
+              borderRadius: 10,
               background: 'rgba(59,130,246,0.12)',
               border: '1px solid rgba(96,165,250,0.22)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
             }}>
-              <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 15, color: '#60a5fa' }}>P</span>
+              <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 14, color: '#60a5fa' }}>P</span>
             </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{
-                width: 32, height: 32,
-                borderRadius: 10,
-                background: 'rgba(59,130,246,0.12)',
-                border: '1px solid rgba(96,165,250,0.22)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0,
-              }}>
-                <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 14, color: '#60a5fa' }}>P</span>
-              </div>
-              <div>
-                <div style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 13, color: '#fff', lineHeight: 1.2 }}>Precificação</div>
-                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.32)', lineHeight: 1.3 }}>Realengo</div>
-              </div>
+            <div>
+              <div style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 13, color: '#fff', lineHeight: 1.2 }}>Precificação</div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.32)', lineHeight: 1.3 }}>Realengo</div>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Nav */}
+      <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '10px 8px' }}>
+        {menuItems.map(({ key, Icon, label }) => (
+          <NavBtn
+            key={key}
+            isActive={key === activeKey}
+            isCollapsed={collapsed}
+            Icon={Icon}
+            label={label}
+            onClick={() => onNavigate(key)}
+          />
+        ))}
+      </nav>
+
+      {/* Rodapé — usuário + logout + colapso */}
+      <div style={{
+        borderTop: '1px solid rgba(255,255,255,0.07)',
+        padding: '10px 8px',
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 3,
+      }}>
+        {/* Usuário */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 9,
+          padding: collapsed ? '8px 0' : '8px 10px',
+          justifyContent: collapsed ? 'center' : 'flex-start',
+          borderRadius: 10,
+          background: 'rgba(255,255,255,0.04)',
+          marginBottom: 2,
+        }}>
+          <div style={{
+            width: 28, height: 28,
+            borderRadius: 8,
+            background: '#1d4e89',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 11, fontWeight: 700, color: '#fff',
+            fontFamily: 'Inter, sans-serif',
+            flexShrink: 0,
+            letterSpacing: '0.02em',
+          }}>
+            {initials}
+          </div>
+          {!collapsed && (
+            <span style={{
+              fontSize: 13,
+              color: 'rgba(255,255,255,0.55)',
+              fontFamily: 'Inter, sans-serif',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
+              {user?.username}
+            </span>
           )}
         </div>
 
-        {/* Nav */}
-        <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '10px 8px' }}>
-          {menuItems.map(({ key, Icon, label }) => (
-            <NavBtn
-              key={key}
-              isActive={key === activeKey}
-              isCollapsed={collapsed}
-              Icon={Icon}
-              label={label}
-              onClick={() => navigate(`/app/${key}`)}
-            />
-          ))}
-        </nav>
-
-        {/* Rodapé — usuário + logout + colapso */}
-        <div style={{
-          borderTop: '1px solid rgba(255,255,255,0.07)',
-          padding: '10px 8px',
-          flexShrink: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 3,
-        }}>
-          {/* Usuário */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 9,
-            padding: collapsed ? '8px 0' : '8px 10px',
+        {/* Logout */}
+        <button
+          onClick={onLogout}
+          onMouseEnter={() => setHoverLogout(true)}
+          onMouseLeave={() => setHoverLogout(false)}
+          title={collapsed ? 'Sair' : undefined}
+          style={{
+            display: 'flex', alignItems: 'center',
             justifyContent: collapsed ? 'center' : 'flex-start',
+            gap: 9,
+            width: '100%',
+            padding: collapsed ? '9px 0' : '9px 10px',
             borderRadius: 10,
-            background: 'rgba(255,255,255,0.04)',
-            marginBottom: 2,
-          }}>
-            <div style={{
-              width: 28, height: 28,
-              borderRadius: 8,
-              background: '#1d4e89',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 11, fontWeight: 700, color: '#fff',
+            border: 'none',
+            background: hoverLogout ? 'rgba(239,68,68,0.12)' : 'transparent',
+            cursor: 'pointer',
+            outline: 'none',
+            transition: 'background 0.2s',
+          }}
+        >
+          <IconLogout color={hoverLogout ? '#f87171' : 'rgba(255,255,255,0.3)'} />
+          {!collapsed && (
+            <span style={{
+              fontSize: 13,
+              color: hoverLogout ? '#f87171' : 'rgba(255,255,255,0.3)',
               fontFamily: 'Inter, sans-serif',
-              flexShrink: 0,
-              letterSpacing: '0.02em',
+              transition: 'color 0.2s',
             }}>
-              {initials}
-            </div>
-            {!collapsed && (
-              <span style={{
-                fontSize: 13,
-                color: 'rgba(255,255,255,0.55)',
-                fontFamily: 'Inter, sans-serif',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}>
-                {user?.username}
-              </span>
-            )}
-          </div>
+              Sair
+            </span>
+          )}
+        </button>
 
-          {/* Logout */}
+        {/* Colapso (apenas desktop) */}
+        {showCollapseBtn && (
           <button
-            onClick={handleLogout}
-            onMouseEnter={() => setHoverLogout(true)}
-            onMouseLeave={() => setHoverLogout(false)}
-            title={collapsed ? 'Sair' : undefined}
-            style={{
-              display: 'flex', alignItems: 'center',
-              justifyContent: collapsed ? 'center' : 'flex-start',
-              gap: 9,
-              width: '100%',
-              padding: collapsed ? '9px 0' : '9px 10px',
-              borderRadius: 10,
-              border: 'none',
-              background: hoverLogout ? 'rgba(239,68,68,0.12)' : 'transparent',
-              cursor: 'pointer',
-              outline: 'none',
-              transition: 'background 0.2s',
-            }}
-          >
-            <IconLogout color={hoverLogout ? '#f87171' : 'rgba(255,255,255,0.3)'} />
-            {!collapsed && (
-              <span style={{
-                fontSize: 13,
-                color: hoverLogout ? '#f87171' : 'rgba(255,255,255,0.3)',
-                fontFamily: 'Inter, sans-serif',
-                transition: 'color 0.2s',
-              }}>
-                Sair
-              </span>
-            )}
-          </button>
-
-          {/* Colapso */}
-          <button
-            onClick={() => setCollapsed(!collapsed)}
+            onClick={onToggleCollapse}
             onMouseEnter={() => setHoverCollapse(true)}
             onMouseLeave={() => setHoverCollapse(false)}
             title={collapsed ? 'Expandir' : 'Recolher'}
@@ -322,14 +321,150 @@ export default function AppLayout() {
               : <IconChevronLeft  color="rgba(255,255,255,0.35)" />
             }
           </button>
-        </div>
-      </aside>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Componente principal ──────────────────────────────────────────────────────
+export default function AppLayout() {
+  const user = useAuthStore((s) => s.user)
+  const logout = useAuthStore((s) => s.logout)
+  const navigate = useNavigate()
+  const location = useLocation()
+  const isMobile = useIsMobile()
+
+  const activeKey = location.pathname.split('/').filter(Boolean).pop() || 'prices'
+  const menuItems = user?.role === 'admin' ? [...BASE_MENU, ADMIN_ITEM] : BASE_MENU
+
+  const [collapsed, setCollapsed] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+
+  function handleLogout() {
+    logout()
+    navigate('/login')
+  }
+
+  function handleNavigate(key: string) {
+    navigate(`/app/${key}`)
+    if (isMobile) setDrawerOpen(false)
+  }
+
+  const initials = user?.username ? user.username.slice(0, 2).toUpperCase() : 'U'
+
+  return (
+    <div style={{
+      width: '100%',
+      height: '100vh',
+      display: 'flex',
+      flexDirection: isMobile ? 'column' : 'row',
+      background: '#f0f4f8',
+      overflow: 'hidden',
+    }}>
+
+      {/* ── Mobile: header com hamburger ── */}
+      {isMobile && (
+        <header style={{
+          height: 56,
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 16px',
+          gap: 12,
+          background: SIDEBAR_BG,
+          flexShrink: 0,
+        }}>
+          <button
+            onClick={() => setDrawerOpen(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              border: 'none',
+              background: 'rgba(255,255,255,0.07)',
+              cursor: 'pointer',
+              outline: 'none',
+            }}
+          >
+            <IconMenu color="rgba(255,255,255,0.7)" />
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              width: 28, height: 28,
+              borderRadius: 8,
+              background: 'rgba(59,130,246,0.12)',
+              border: '1px solid rgba(96,165,250,0.22)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 12, color: '#60a5fa' }}>P</span>
+            </div>
+            <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 14, color: '#fff' }}>
+              Precificação
+            </span>
+          </div>
+        </header>
+      )}
+
+      {/* ── Mobile: Drawer ── */}
+      {isMobile && (
+        <Drawer
+          placement="left"
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          width={260}
+          styles={{ body: { padding: 0, background: SIDEBAR_BG }, header: { display: 'none' } }}
+          closable={false}
+        >
+          <SidebarContent
+            collapsed={false}
+            menuItems={menuItems}
+            activeKey={activeKey}
+            onNavigate={handleNavigate}
+            user={user}
+            initials={initials}
+            onLogout={handleLogout}
+            showCollapseBtn={false}
+          />
+        </Drawer>
+      )}
+
+      {/* ── Desktop: Sidebar — colada nas bordas esquerda/topo/baixo, arredondada à direita ── */}
+      {!isMobile && (
+        <aside style={{
+          width: collapsed ? 68 : 220,
+          minWidth: collapsed ? 68 : 220,
+          background: SIDEBAR_BG,
+          borderRadius: '0 20px 20px 0',
+          height: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          boxShadow: '4px 0 20px rgba(0,0,0,0.15)',
+          transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1), min-width 0.25s cubic-bezier(0.4,0,0.2,1)',
+          flexShrink: 0,
+        }}>
+          <SidebarContent
+            collapsed={collapsed}
+            menuItems={menuItems}
+            activeKey={activeKey}
+            onNavigate={handleNavigate}
+            user={user}
+            initials={initials}
+            onLogout={handleLogout}
+            onToggleCollapse={() => setCollapsed(!collapsed)}
+            showCollapseBtn={true}
+          />
+        </aside>
+      )}
 
       {/* ── Conteúdo ── */}
       <main style={{
         flex: 1,
-        overflow: 'hidden',
-        padding: 16,
+        overflow: isMobile ? 'auto' : 'hidden',
+        padding: isMobile ? 8 : 16,
         minWidth: 0,
         display: 'flex',
         flexDirection: 'column',

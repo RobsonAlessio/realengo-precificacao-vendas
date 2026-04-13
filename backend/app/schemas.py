@@ -122,6 +122,7 @@ class ChangelogEntryCreate(BaseModel):
     tipo: str   # adicionado | corrigido | modificado | removido
     titulo: str
     descricao: Optional[str] = None
+    git_commit: Optional[str] = None  # SHA-1 do git HEAD; auto-preenchido se disponível
 
 
 class ChangelogEntryUpdate(BaseModel):
@@ -130,6 +131,7 @@ class ChangelogEntryUpdate(BaseModel):
     tipo: Optional[str] = None
     titulo: Optional[str] = None
     descricao: Optional[str] = None
+    git_commit: Optional[str] = None
 
 
 class ChangelogEntryResponse(BaseModel):
@@ -141,6 +143,7 @@ class ChangelogEntryResponse(BaseModel):
     descricao: Optional[str] = None
     criado_em: datetime
     criado_por: Optional[str] = None
+    git_commit: Optional[str] = None
 
     class Config:
         from_attributes = True

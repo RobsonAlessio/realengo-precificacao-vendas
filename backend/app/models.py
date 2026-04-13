@@ -37,6 +37,7 @@ class ChangelogEntry(Base):
     descricao        = Column(String, nullable=True)
     criado_em        = Column(DateTime, default=datetime.utcnow)
     criado_por       = Column(String(100), nullable=True)
+    git_commit       = Column(String(40), nullable=True)
 
 
 class ParametroGeral(Base):

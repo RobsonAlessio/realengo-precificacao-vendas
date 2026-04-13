@@ -2,9 +2,10 @@
 html, body, #root {
   margin: 0;
   padding: 0;
-  width: 100vw;
+  width: 100%;
   height: 100vh;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: hidden;
   background-color: #f0f4f8;
 }
 
@@ -169,4 +170,15 @@ html, body, #root {
 }
 .glass-input-wrapper .glass-input {
   padding-left: 40px;
+}
+
+/* === RESPONSIVO — Mobile (max 767px) === */
+@media (max-width: 767px) {
+  html, body, #root {
+    overflow-y: auto;
+  }
+
+  .ant-table-wrapper .ant-table { font-size: 13px; }
+  .ant-card { border-radius: 10px !important; }
+  .glass-card { border-radius: 24px; padding: 24px; }
 }

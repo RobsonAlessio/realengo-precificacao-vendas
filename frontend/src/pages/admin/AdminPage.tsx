@@ -5,6 +5,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { Typography } from 'antd'
 import dayjs from 'dayjs'
 import api from '../../api/client'
+import { useIsMobile } from '../../hooks/useIsMobile'
 
 const { Text } = Typography
 const { TextArea } = Input
@@ -189,6 +190,7 @@ function IconRefresh({ spinning }: { spinning: boolean }) {
 // ---------------------------------------------------------------------------
 
 export default function AdminPage() {
+  const isMobile = useIsMobile()
   // — Usuários —
   const [users, setUsers] = useState<UserRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -621,7 +623,7 @@ export default function AdminPage() {
     const groups = groupByVersion(changelogEntries)
 
     return (
-      <div style={{ overflowY: 'auto', height: 'calc(100vh - 220px)', paddingRight: 4 }}>
+      <div style={{ overflowY: 'auto', height: isMobile ? 'auto' : 'calc(100vh - 220px)', paddingRight: 4 }}>
         {groups.map((group, gi) => (
           <div key={group.versao} style={{ marginBottom: gi < groups.length - 1 ? 28 : 0 }}>
             {/* Cabeçalho da versão */}
@@ -793,7 +795,7 @@ export default function AdminPage() {
             pagination={false}
             bordered
             loading={loading}
-            scroll={{ x: 'max-content', y: 'calc(100vh - 220px)' }}
+            scroll={{ x: 'max-content', y: isMobile ? 'calc(100vh - 180px)' : 'calc(100vh - 220px)' }}
             locale={{ emptyText: 'Nenhum usuário encontrado' }}
           />
         </>
@@ -874,7 +876,7 @@ export default function AdminPage() {
             pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (t) => `${t} registros` }}
             bordered
             loading={logsLoading}
-            scroll={{ x: 'max-content', y: 'calc(100vh - 310px)' }}
+            scroll={{ x: 'max-content', y: isMobile ? 'calc(100vh - 240px)' : 'calc(100vh - 310px)' }}
             locale={{ emptyText: 'Nenhum registro encontrado' }}
           />
         </>
@@ -898,9 +900,10 @@ export default function AdminPage() {
       borderRadius: 16,
       border: '1px solid #e2e8f0',
       boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04)',
-      padding: '20px 24px 24px',
-      height: 'calc(100vh - 32px)',
-      overflow: 'hidden',
+      padding: isMobile ? '14px 10px 16px' : '20px 24px 24px',
+      height: isMobile ? 'auto' : 'calc(100vh - 32px)',
+      overflow: isMobile ? 'visible' : 'hidden',
+      minHeight: isMobile ? 'calc(100vh - 72px)' : undefined,
     }}>
 
       {/* Header */}
@@ -919,7 +922,7 @@ export default function AdminPage() {
           <span style={{
             fontFamily: 'Outfit, sans-serif',
             fontWeight: 700,
-            fontSize: 17,
+            fontSize: isMobile ? 15 : 17,
             color: '#0f1f3d',
             letterSpacing: '-0.01em',
           }}>
@@ -1054,10 +1057,10 @@ export default function AdminPage() {
         onCancel={() => setClModalOpen(false)}
         footer={null}
         destroyOnClose
-        width={520}
+        width={isMobile ? '95vw' : 520}
       >
         <Form form={clForm} layout="vertical" onFinish={handleClSave} style={{ marginTop: 8 }}>
-          <div style={{ display: 'flex', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 12, flexDirection: isMobile ? 'column' : 'row' }}>
             <Form.Item
               label="Versão"
               name="versao"

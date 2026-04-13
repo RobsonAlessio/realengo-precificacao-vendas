@@ -1,3 +1,4 @@
+import subprocess
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -6,6 +7,20 @@ from app import models, schemas, auth as auth_utils
 from app.audit import log_audit
 
 router = APIRouter(prefix="/changelog", tags=["changelog"])
+
+
+def _get_git_commit() -> str | None:
+    """Tenta obter o SHA do commit HEAD. Retorna None silenciosamente se não disponível."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=5, cwd="/app"
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()[:40]
+    except Exception:
+        pass
+    return None
 
 
 def _serialize(entry: models.ChangelogEntry) -> dict:
@@ -18,6 +33,7 @@ def _serialize(entry: models.ChangelogEntry) -> dict:
         "descricao": entry.descricao,
         "criado_em": (entry.criado_em.isoformat() + "Z") if entry.criado_em else None,
         "criado_por": entry.criado_por,
+        "git_commit": entry.git_commit,
     }
 
 
@@ -42,6 +58,8 @@ def create_changelog(
     db: Session = Depends(get_db),
 ):
     """Cria uma nova entrada no histórico de versões (admin only)."""
+    git_sha = payload.git_commit or _get_git_commit()
+
     entry = models.ChangelogEntry(
         versao=payload.versao.strip(),
         data_lancamento=payload.data_lancamento,
@@ -49,6 +67,7 @@ def create_changelog(
         titulo=payload.titulo.strip(),
         descricao=payload.descricao.strip() if payload.descricao else None,
         criado_por=current_user.username,
+        git_commit=git_sha,
     )
     db.add(entry)
     db.commit()
@@ -58,6 +77,7 @@ def create_changelog(
         "versao": entry.versao,
         "tipo": entry.tipo,
         "titulo": entry.titulo,
+        "git_commit": git_sha,
         "created_by": current_user.username,
     })
     return _serialize(entry)
@@ -85,6 +105,8 @@ def update_changelog(
         entry.titulo = payload.titulo.strip()
     if payload.descricao is not None:
         entry.descricao = payload.descricao.strip() if payload.descricao else None
+    if payload.git_commit is not None:
+        entry.git_commit = payload.git_commit.strip() or None
 
     db.commit()
     db.refresh(entry)

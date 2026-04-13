@@ -10,6 +10,7 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import api from '../../api/client'
 import { useAuthStore } from '../../store/authStore'
+import { useIsMobile } from '../../hooks/useIsMobile'
 
 const { Text } = Typography
 
@@ -149,6 +150,7 @@ const cardStyle: React.CSSProperties = {
 // ── Aba 1: Parâmetros de Representantes ───────────────────────────────────────
 
 function RepresentantesParamsTab() {
+  const isMobile = useIsMobile()
   const now = new Date()
   const [ano, setAno] = useState(now.getFullYear())
   const [mes, setMes] = useState(now.getMonth() + 1)
@@ -331,13 +333,13 @@ function RepresentantesParamsTab() {
   const canSave = role !== 'viewer'
 
   return (
-    <div style={{ height: 'calc(100vh - 140px)', overflow: 'hidden' }}>
-      <Card style={{ ...cardStyle, marginBottom: 16 }} bodyStyle={{ padding: '16px 20px' }}>
+    <div style={{ height: isMobile ? 'auto' : 'calc(100vh - 140px)', overflow: isMobile ? 'visible' : 'hidden' }}>
+      <Card style={{ ...cardStyle, marginBottom: 16 }} bodyStyle={{ padding: isMobile ? '12px 10px' : '16px 20px' }}>
         <Space wrap align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
           <Space wrap align="center">
             <Select value={mes} options={MESES.map((m, i) => ({ value: i + 1, label: m }))} style={{ width: 130 }} onChange={v => { setMes(v); setVigencias([]) }} />
             <Select value={ano} options={Array.from({ length: 6 }, (_, i) => { const y = now.getFullYear() - 2 + i; return { value: y, label: String(y) } })} style={{ width: 90 }} onChange={v => { setAno(v); setVigencias([]) }} />
-            <Select showSearch placeholder="Selecione o representante" value={selectedRep} options={repOptions} style={{ width: 280 }}
+            <Select showSearch placeholder="Selecione o representante" value={selectedRep} options={repOptions} style={{ width: isMobile ? '100%' : 280 }}
               onChange={setSelectedRep} filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())} allowClear />
             {dirtyCount > 0 && <Tag color="orange">{dirtyCount} alteração(ões) pendente(s)</Tag>}
           </Space>
@@ -366,7 +368,7 @@ function RepresentantesParamsTab() {
             extra={canAddVigencia ? <Button icon={<PlusOutlined />} onClick={addVigencia} size="small">Adicionar vigência</Button> : null}
           >
             <Table columns={cols} dataSource={vigencias} rowKey="key" size="small" pagination={false} bordered
-              scroll={{ x: 'max-content', y: 'calc(100vh - 380px)' }}
+              scroll={{ x: 'max-content', y: isMobile ? 'calc(100vh - 280px)' : 'calc(100vh - 380px)' }}
               locale={{ emptyText: loading ? 'Carregando...' : canAddVigencia ? 'Nenhuma vigência cadastrada para este mês. Clique em "Adicionar vigência".' : 'Nenhuma vigência cadastrada para este mês.' }} />
           </Card>
         )}
@@ -378,6 +380,7 @@ function RepresentantesParamsTab() {
 // ── Aba 2: Parâmetros Gerais (Insumos) ────────────────────────────────────────
 
 function ParametrosGeraisTab() {
+  const isMobile = useIsMobile()
   const now = new Date()
   const [ano, setAno] = useState(now.getFullYear())
   const [mes, setMes] = useState(now.getMonth() + 1)
@@ -537,8 +540,8 @@ function ParametrosGeraisTab() {
   ]
 
   return (
-    <div style={{ height: 'calc(100vh - 140px)', overflow: 'hidden' }}>
-      <Card style={{ ...cardStyle, marginBottom: 16 }} bodyStyle={{ padding: '16px 20px' }}>
+    <div style={{ height: isMobile ? 'auto' : 'calc(100vh - 140px)', overflow: isMobile ? 'visible' : 'hidden' }}>
+      <Card style={{ ...cardStyle, marginBottom: 16 }} bodyStyle={{ padding: isMobile ? '12px 10px' : '16px 20px' }}>
         <Space wrap align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
           <Space wrap align="center">
             <Select value={mes} options={MESES.map((m, i) => ({ value: i + 1, label: m }))} style={{ width: 130 }} onChange={v => { setMes(v); setVigencias([]) }} />
@@ -563,7 +566,7 @@ function ParametrosGeraisTab() {
           extra={canAdd ? <Button icon={<PlusOutlined />} onClick={addVigencia} size="small">Adicionar vigência</Button> : null}
         >
           <Table columns={cols} dataSource={vigencias} rowKey="key" size="small" pagination={false} bordered
-            scroll={{ x: 'max-content', y: 'calc(100vh - 320px)' }}
+            scroll={{ x: 'max-content', y: isMobile ? 'calc(100vh - 240px)' : 'calc(100vh - 320px)' }}
             locale={{ emptyText: loading ? 'Carregando...' : canAdd ? 'Nenhuma vigência cadastrada. Clique em "Adicionar vigência".' : 'Nenhuma vigência cadastrada para este mês.' }} />
         </Card>
       </Spin>
@@ -575,6 +578,7 @@ function ParametrosGeraisTab() {
 
 export default function RepresentantesParams() {
   const [activeTab, setActiveTab] = useState('representantes')
+  const isMobile = useIsMobile()
 
   const tabItems = [
     {
@@ -605,16 +609,17 @@ export default function RepresentantesParams() {
       borderRadius: 16,
       border: '1px solid #e2e8f0',
       boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04)',
-      padding: '16px 24px 24px',
-      height: 'calc(100vh - 32px)',
-      overflow: 'hidden',
+      padding: isMobile ? '12px 10px 16px' : '16px 24px 24px',
+      height: isMobile ? 'auto' : 'calc(100vh - 32px)',
+      overflow: isMobile ? 'visible' : 'hidden',
+      minHeight: isMobile ? 'calc(100vh - 72px)' : undefined,
     }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
         <div style={{ width: 30, height: 30, background: 'rgba(29,78,137,0.08)', border: '1px solid rgba(29,78,137,0.18)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <IconUsers />
         </div>
-        <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 17, color: '#0f1f3d', letterSpacing: '-0.01em' }}>
+        <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: isMobile ? 15 : 17, color: '#0f1f3d', letterSpacing: '-0.01em' }}>
           Parâmetros
         </span>
       </div>
