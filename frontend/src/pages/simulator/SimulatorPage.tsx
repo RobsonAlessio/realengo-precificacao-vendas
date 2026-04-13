@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, CSSProperties } from 'react'
 import { Select, Radio, InputNumber, Spin, Tooltip, Segmented } from 'antd'
 import { SwapOutlined, InfoCircleOutlined } from '@ant-design/icons'
 import api from '../../api/client'
+import { useIsMobile } from '../../hooks/useIsMobile'
 
 // ── tipos ────────────────────────────────────────────────────────────────────
 interface VarDef { campo: string; label: string; formato: 'numero' | 'percentual' | 'moeda' }
@@ -167,6 +168,7 @@ export default function SalesSimulator() {
   const [deducaoAdicional, setDeducaoAdicional] = useState<number>(0)
   const [manualFinalPrice, setManualFinalPrice] = useState<number | null>(null)
   const [fonte, setFonte] = useState<FonteConfig>(FONTE_RESET)
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     setLoading(true)
@@ -388,7 +390,7 @@ export default function SalesSimulator() {
   ]
 
   return (
-    <div style={{ ...baseFont, flex: 1, width: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', gap: 10, position: 'relative' }}>
+    <div style={{ ...baseFont, flex: 1, width: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', gap: 10, position: 'relative', overflow: isMobile ? 'visible' : 'hidden' }}>
 
       {/* loading overlay */}
       {loading && (
@@ -398,20 +400,20 @@ export default function SalesSimulator() {
       )}
 
       {/* ── Cabeçalho + Seletores ── */}
-      <div style={{ ...card, padding: '16px 20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+      <div style={{ ...card, padding: isMobile ? '12px 10px' : '16px 20px' }}>
+        <div style={{ display: 'flex', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? 10 : 16, flexWrap: 'wrap', flexDirection: isMobile ? 'column' : 'row' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
             <div style={{ width: 34, height: 34, background: 'rgba(29,78,137,0.08)', border: '1px solid rgba(29,78,137,0.18)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <IconCalc />
             </div>
-            <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 18, color: '#0f1f3d', letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
+            <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: isMobile ? 15 : 18, color: '#0f1f3d', letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
               Simulador de Preço
             </span>
           </div>
 
           {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '6px 12px', color: '#991b1b', fontSize: 13, fontFamily: 'Inter, sans-serif' }}>{error}</div>}
 
-          <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ flex: 1, minWidth: isMobile ? 0 : 200 }}>
             <Select showSearch allowClear placeholder="Selecione um representante..." style={{ width: '100%', fontFamily: 'Inter, sans-serif' }} options={reps} value={selectedRep} onChange={setSelectedRep} filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())} size="small" />
           </div>
           <div style={{ flexShrink: 0 }}>
@@ -423,15 +425,15 @@ export default function SalesSimulator() {
       </div>
 
       {/* ── Corpo principal ── */}
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10 }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10 }}>
 
         {/* ── Coluna esquerda: Custos Fixos + Deduções ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0, overflow: isMobile ? 'visible' : 'hidden' }}>
 
           {/* Custos Fixos */}
-          <div style={{ ...card, flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <div style={{ ...card, flex: isMobile ? 'none' : 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             <div style={cardHeader('#1d4e89')}>Custos Fixos (Numerador)</div>
-            <div style={{ padding: '10px 14px', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
+            <div style={{ padding: '10px 14px', flex: isMobile ? 'none' : 1, display: 'flex', flexDirection: 'column', overflow: isMobile ? 'visible' : 'auto' }}>
 
               {/* MP: Saco 50kg (editável) | Fardo 30kg (resultado) */}
               {mpVar && (
@@ -543,9 +545,9 @@ export default function SalesSimulator() {
           </div>
 
           {/* Deduções */}
-          <div style={{ ...card, flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <div style={{ ...card, flex: isMobile ? 'none' : 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             <div style={cardHeader('#d4380d')}>Deduções (Denominador)</div>
-            <div style={{ padding: '10px 14px', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
+            <div style={{ padding: '10px 14px', flex: isMobile ? 'none' : 1, display: 'flex', flexDirection: 'column', overflow: isMobile ? 'visible' : 'auto' }}>
 
               {/* Comissão | Imposto */}
               {(comissaoVar || impostoVar) && (
@@ -641,7 +643,7 @@ export default function SalesSimulator() {
         </div>
 
         {/* ── Coluna direita: Fonte dos Custos + Preço Final ── */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0, overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0, overflow: isMobile ? 'visible' : 'hidden' }}>
 
           {/* Fonte dos Custos */}
           <div style={{ ...card }}>

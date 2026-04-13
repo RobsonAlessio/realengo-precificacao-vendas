@@ -5,6 +5,7 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import { Typography } from 'antd'
 import api from '../../api/client'
+import { useIsMobile } from '../../hooks/useIsMobile'
 
 const { Text } = Typography
 
@@ -210,6 +211,175 @@ function IconRefresh({ spinning }: { spinning: boolean }) {
   )
 }
 
+// ── popover compartilhado (desktop + mobile) ───────────────────────────────
+
+function renderPopoverContent(
+  calc: CalcDef,
+  rec: Record<string, unknown>,
+  preco: unknown,
+  title?: string,
+) {
+  if (!calc.variaveis?.length) return null
+  const gs = calc.grupo ? GROUP_STYLE[calc.grupo] : null
+  const color = gs?.calcColor ?? '#27ae60'
+  const fixos = calc.variaveis.filter(v => v.formato !== 'percentual')
+  const pcts  = calc.variaveis.filter(v => v.formato === 'percentual')
+  const somaFixos = fixos.reduce((acc, v) => acc + (Number(rec[v.campo] ?? 0)), 0)
+  const somaPcts  = pcts.reduce((acc, v) => acc + (Number(rec[v.campo] ?? 0)), 0)
+  const divisor   = 1 - somaPcts
+  return (
+    <div style={{ minWidth: 240, fontSize: 13 }}>
+      {title && <div style={{ fontWeight: 600, color, marginBottom: 6 }}>{title}</div>}
+      <Text strong style={{ color }}>Custos fixos (R$/fardo)</Text>
+      <table style={{ width: '100%', marginTop: 4 }}>
+        <tbody>
+          {fixos.map(v => {
+            const fardo = Number(rec[v.campo] ?? 0)
+            const saco  = v.campo_sc ? Number(rec[v.campo_sc] ?? 0) : 0
+            const renda = fardo > 0 && saco > 0 ? (saco * 30) / (fardo * 50) : null
+            return (
+              <tr key={v.campo}>
+                <td style={{ paddingRight: 12, color: '#555' }}>{v.label}</td>
+                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                  {fmt(rec[v.campo], v.formato)}
+                  {v.campo_sc && rec[v.campo_sc] != null && (
+                    <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
+                      ({fmt(rec[v.campo_sc], 'moeda')}/sc{renda != null ? ` · renda: ${(renda * 100).toFixed(1)}%` : ''})
+                    </Text>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
+          <tr style={{ borderTop: '1px solid #ddd' }}>
+            <td style={{ paddingTop: 2 }}><Text strong>Subtotal</Text></td>
+            <td style={{ textAlign: 'right', paddingTop: 2 }}><Text strong>{fmt(somaFixos, 'moeda')}</Text></td>
+          </tr>
+        </tbody>
+      </table>
+      <Divider style={{ margin: '8px 0' }} />
+      <Text strong style={{ color }}>Deduções do preço (%)</Text>
+      <table style={{ width: '100%', marginTop: 4 }}>
+        <tbody>
+          {pcts.map(v => (
+            <tr key={v.campo}>
+              <td style={{ paddingRight: 12, color: '#555' }}>{v.label}</td>
+              <td style={{ textAlign: 'right' }}>{fmt(rec[v.campo], 'percentual')}</td>
+            </tr>
+          ))}
+          <tr style={{ borderTop: '1px solid #ddd' }}>
+            <td style={{ paddingTop: 2 }}><Text strong>Divisor</Text></td>
+            <td style={{ textAlign: 'right', paddingTop: 2 }}><Text strong>{divisor.toFixed(4)}</Text></td>
+          </tr>
+        </tbody>
+      </table>
+      <Divider style={{ margin: '8px 0' }} />
+      <div style={{ textAlign: 'right' }}>
+        <Text type="secondary" style={{ fontSize: 11 }}>{fmt(somaFixos, 'moeda')} ÷ {divisor.toFixed(4)} =&nbsp;</Text>
+        <Text strong style={{ color, fontSize: 14 }}>{fmt(preco, 'moeda')}</Text>
+      </div>
+    </div>
+  )
+}
+
+// ── card mobile ──────────────────────────────────────────────────────────────
+
+function MobilePriceCard({ row, calcAtivos, dados }: {
+  row: Record<string, unknown>
+  calcAtivos: CalcDef[]
+  dados: Record<string, unknown>[]
+}) {
+  const calcGrupos: Record<string, CalcDef[]> = {}
+  for (const c of calcAtivos) {
+    const g = c.grupo ?? '_calc'
+    if (!calcGrupos[g]) calcGrupos[g] = []
+    calcGrupos[g].push(c)
+  }
+  const temF2 = dados?.some(r => r['meta_frete_2'] != null) ?? false
+  const temF3 = dados?.some(r => r['meta_frete_3'] != null) ?? false
+
+  const repName = row['codigo_representante'] != null
+    ? `${row['codigo_representante']} - ${row['representante']}`
+    : String(row['representante'] ?? '')
+
+  return (
+    <div style={{
+      background: '#ffffff',
+      borderRadius: 12,
+      border: '1px solid #e2e8f0',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+      marginBottom: 10,
+      overflow: 'hidden',
+    }}>
+      <div style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9' }}>
+        <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 14, color: '#1e293b' }}>
+          {repName}
+        </span>
+      </div>
+      {Object.entries(calcGrupos).map(([grupo, calcs]) => {
+        const gs = GROUP_STYLE[grupo]
+        return (
+          <div key={grupo} style={{ borderBottom: '1px solid #f1f5f9' }}>
+            <div style={{
+              padding: '6px 14px',
+              background: gs ? gs.subheader : '#f8fafc',
+              fontFamily: 'Inter, sans-serif',
+              fontWeight: 700,
+              fontSize: 12,
+              color: gs ? gs.text : '#374151',
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase' as const,
+            }}>
+              {grupo}
+            </div>
+            <div style={{ padding: '6px 14px 10px' }}>
+              {calcs.map(calc => {
+                const freteCols: { label: string; key: string; metaKey: string | null }[] = [
+                  { label: 'Frete 1', key: calc.id, metaKey: null },
+                ]
+                if (temF2) freteCols.push({ label: 'Frete 2', key: calc.id + '_f2', metaKey: 'meta_frete_2' })
+                if (temF3) freteCols.push({ label: 'Frete 3', key: calc.id + '_f3', metaKey: 'meta_frete_3' })
+                return (
+                  <div key={calc.id} style={{ marginBottom: 2 }}>
+                    {freteCols.map(fc => {
+                      const val = row[fc.key]
+                      if (val == null) return null
+                      const rec = fc.metaKey ? { ...row, meta_frete: row[fc.metaKey] } : row
+                      const popoverContent = renderPopoverContent(calc, rec, val, `${grupo ?? calc.label} — ${fc.label}`)
+                      return (
+                        <div key={fc.key} style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '4px 0',
+                        }}>
+                          <span style={{ fontSize: 13, color: '#64748b', fontFamily: 'Inter, sans-serif' }}>
+                            {calc.label} — {fc.label}
+                          </span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 14, color: gs?.calcColor ?? '#27ae60', fontVariantNumeric: 'tabular-nums' }}>
+                              {fmt(val, calc.formato)}
+                            </span>
+                            {popoverContent && (
+                              <Popover content={popoverContent} title={`${grupo ?? calc.label} — ${fc.label}`} trigger="click">
+                                <span style={{ color: gs?.calcColor ?? '#27ae60', cursor: 'pointer', fontSize: 11, opacity: 0.7 }}>ⓘ</span>
+                              </Popover>
+                            )}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── geração de colunas ───────────────────────────────────────────────────────
 
 function buildColumns(
@@ -268,65 +438,7 @@ function buildColumns(
     const color = gs?.calcColor ?? '#27ae60'
 
     const renderPopover = (rec: Record<string, unknown>, preco: unknown, title?: string) => {
-      if (!calc.variaveis?.length) return null
-      const fixos = calc.variaveis.filter(v => v.formato !== 'percentual')
-      const pcts  = calc.variaveis.filter(v => v.formato === 'percentual')
-      const somaFixos = fixos.reduce((acc, v) => acc + (Number(rec[v.campo] ?? 0)), 0)
-      const somaPcts  = pcts.reduce((acc, v) => acc + (Number(rec[v.campo] ?? 0)), 0)
-      const divisor   = 1 - somaPcts
-      return (
-        <div style={{ minWidth: 240, fontSize: 13 }}>
-          {title && <div style={{ fontWeight: 600, color, marginBottom: 6 }}>{title}</div>}
-          <Text strong style={{ color }}>Custos fixos (R$/fardo)</Text>
-          <table style={{ width: '100%', marginTop: 4 }}>
-            <tbody>
-              {fixos.map(v => {
-                const fardo = Number(rec[v.campo] ?? 0)
-                const saco  = v.campo_sc ? Number(rec[v.campo_sc] ?? 0) : 0
-                const renda = fardo > 0 && saco > 0 ? (saco * 30) / (fardo * 50) : null
-                return (
-                  <tr key={v.campo}>
-                    <td style={{ paddingRight: 12, color: '#555' }}>{v.label}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                      {fmt(rec[v.campo], v.formato)}
-                      {v.campo_sc && rec[v.campo_sc] != null && (
-                        <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
-                          ({fmt(rec[v.campo_sc], 'moeda')}/sc{renda != null ? ` · renda: ${(renda * 100).toFixed(1)}%` : ''})
-                        </Text>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-              <tr style={{ borderTop: '1px solid #ddd' }}>
-                <td style={{ paddingTop: 2 }}><Text strong>Subtotal</Text></td>
-                <td style={{ textAlign: 'right', paddingTop: 2 }}><Text strong>{fmt(somaFixos, 'moeda')}</Text></td>
-              </tr>
-            </tbody>
-          </table>
-          <Divider style={{ margin: '8px 0' }} />
-          <Text strong style={{ color }}>Deduções do preço (%)</Text>
-          <table style={{ width: '100%', marginTop: 4 }}>
-            <tbody>
-              {pcts.map(v => (
-                <tr key={v.campo}>
-                  <td style={{ paddingRight: 12, color: '#555' }}>{v.label}</td>
-                  <td style={{ textAlign: 'right' }}>{fmt(rec[v.campo], 'percentual')}</td>
-                </tr>
-              ))}
-              <tr style={{ borderTop: '1px solid #ddd' }}>
-                <td style={{ paddingTop: 2 }}><Text strong>Divisor</Text></td>
-                <td style={{ textAlign: 'right', paddingTop: 2 }}><Text strong>{divisor.toFixed(4)}</Text></td>
-              </tr>
-            </tbody>
-          </table>
-          <Divider style={{ margin: '8px 0' }} />
-          <div style={{ textAlign: 'right' }}>
-            <Text type="secondary" style={{ fontSize: 11 }}>{fmt(somaFixos, 'moeda')} ÷ {divisor.toFixed(4)} =&nbsp;</Text>
-            <Text strong style={{ color, fontSize: 14 }}>{fmt(preco, 'moeda')}</Text>
-          </div>
-        </div>
-      )
+      return renderPopoverContent(calc, rec, preco, title)
     }
 
     const makeSubCol = (freteLabel: string, dataIdx: string, metaFreteKey: string | null) => ({
@@ -392,6 +504,8 @@ export default function PriceTable() {
   const [loading, setLoading] = useState(false)
   const [error, setError]   = useState<string | null>(null)
   const [fonte, setFonte] = useState<FonteConfig>({ mp: 'realizado', embalagem: 'realizado', energia: 'realizado', renda: 'realizado' })
+  const isMobile = useIsMobile()
+  const [badgesExpanded, setBadgesExpanded] = useState(false)
 
   const fetchData = useCallback(async () => {
     setLoading(true); setError(null)
@@ -430,7 +544,7 @@ export default function PriceTable() {
     setFonte(prev => ({ ...prev, [field]: val as Fonte }))
 
   return (
-    <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04)', padding: '20px 24px 24px', height: 'calc(100vh - 32px)', overflow: 'hidden' }}>
+    <div style={{ background: '#ffffff', borderRadius: isMobile ? 12 : 16, border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04)', padding: isMobile ? '14px 10px 16px' : '20px 24px 24px', height: isMobile ? 'auto' : 'calc(100vh - 32px)', overflow: isMobile ? 'visible' : 'hidden', minHeight: isMobile ? 'calc(100vh - 72px)' : undefined }}>
 
       {/* ── Header ── */}
       <div style={{ marginBottom: 12, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
@@ -439,46 +553,71 @@ export default function PriceTable() {
             <div style={{ width: 30, height: 30, background: 'rgba(29,78,137,0.08)', border: '1px solid rgba(29,78,137,0.18)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <IconGrid />
             </div>
-            <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 17, color: '#0f1f3d', letterSpacing: '-0.01em' }}>
+            <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: isMobile ? 15 : 17, color: '#0f1f3d', letterSpacing: '-0.01em' }}>
               Tabela de Preços por Representante
             </span>
           </div>
 
           {/* Badges */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', paddingLeft: 40 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', paddingLeft: isMobile ? 0 : 40 }}>
             {tabela?.calculos_ativos.length ? (
               <span style={{ color: '#64748b', fontSize: 12, fontFamily: 'Inter, sans-serif', marginRight: 4 }}>
                 {tabela.calculos_ativos.length} cálculo(s) ativo(s)
               </span>
             ) : null}
             {tabela?.mes && <span style={badge('blue')}>{tabela.mes}</span>}
-            {tabela?.custo_mp?.data && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <span style={badge(avisoMp ? 'amber' : 'slate')}>MP ref.: {tabela.custo_mp.data}</span>
-                {avisoMp && <Tooltip title={avisoMp}><span style={{ color: '#d97706', fontSize: 13, cursor: 'default', lineHeight: 1 }}>⚠</span></Tooltip>}
-              </span>
+            {isMobile && (
+              <button
+                onClick={() => setBadgesExpanded(!badgesExpanded)}
+                style={{
+                  background: badgesExpanded ? 'rgba(100,116,139,0.12)' : 'rgba(100,116,139,0.08)',
+                  border: '1px solid rgba(100,116,139,0.2)',
+                  borderRadius: 8,
+                  padding: '3px 10px',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  fontFamily: 'Inter, sans-serif',
+                  color: '#475569',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                {badgesExpanded ? 'Fechar ▴' : 'Detalhes ▾'}
+              </button>
             )}
-            {tabela?.custo_producao?.parbo_integral && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <Tooltip title={`Parbo/Integral: emb R$${tabela.custo_producao.parbo_integral.embalagem_por_fardo.toFixed(4)}/fardo · ene R$${tabela.custo_producao.parbo_integral.energia_por_fardo.toFixed(4)}/fardo | Branco: emb R$${tabela.custo_producao.branco?.embalagem_por_fardo.toFixed(4)}/fardo · ene R$${tabela.custo_producao.branco?.energia_por_fardo.toFixed(4)}/fardo`}>
-                  <span style={{ ...badge('cyan'), cursor: 'help' }}>Custos prod.: {tabela.custo_producao.parbo_integral.periodo_referencia}</span>
-                </Tooltip>
-                {avisoProd && <Tooltip title={avisoProd}><span style={{ color: '#d97706', fontSize: 13, cursor: 'default', lineHeight: 1 }}>⚠</span></Tooltip>}
-              </span>
-            )}
-            {tabela?.custo_mp?.renda_processo?.parbo != null && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <Tooltip title={`Parbo/Integral: ${(tabela.custo_mp.renda_processo.parbo * 100).toFixed(2)}% · Branco: ${(tabela.custo_mp.renda_processo.branco * 100).toFixed(2)}%`}>
-                  <span style={{ ...badge('slate'), cursor: 'help' }}>
-                    Renda: P/I {(tabela.custo_mp.renda_processo.parbo * 100).toFixed(1)}% · B {(tabela.custo_mp.renda_processo.branco * 100).toFixed(1)}% ({tabela.custo_mp.renda_processo.mes_referencia})
+            {(!isMobile || badgesExpanded) && (
+              <>
+                {tabela?.custo_mp?.data && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <span style={badge(avisoMp ? 'amber' : 'slate')}>MP ref.: {tabela.custo_mp.data}</span>
+                    {avisoMp && <Tooltip title={avisoMp}><span style={{ color: '#d97706', fontSize: 13, cursor: 'default', lineHeight: 1 }}>⚠</span></Tooltip>}
                   </span>
-                </Tooltip>
-              </span>
-            )}
-            {tabela?.impostos?.periodo && (
-              <Tooltip title="Média ponderada dos 3 meses anteriores ao mês atual">
-                <span style={{ ...badge('slate'), cursor: 'help' }}>Impostos ref.: {tabela.impostos.periodo}</span>
-              </Tooltip>
+                )}
+                {tabela?.custo_producao?.parbo_integral && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <Tooltip title={`Parbo/Integral: emb R$${tabela.custo_producao.parbo_integral.embalagem_por_fardo.toFixed(4)}/fardo · ene R$${tabela.custo_producao.parbo_integral.energia_por_fardo.toFixed(4)}/fardo | Branco: emb R$${tabela.custo_producao.branco?.embalagem_por_fardo.toFixed(4)}/fardo · ene R$${tabela.custo_producao.branco?.energia_por_fardo.toFixed(4)}/fardo`}>
+                      <span style={{ ...badge('cyan'), cursor: 'help' }}>Custos prod.: {tabela.custo_producao.parbo_integral.periodo_referencia}</span>
+                    </Tooltip>
+                    {avisoProd && <Tooltip title={avisoProd}><span style={{ color: '#d97706', fontSize: 13, cursor: 'default', lineHeight: 1 }}>⚠</span></Tooltip>}
+                  </span>
+                )}
+                {tabela?.custo_mp?.renda_processo?.parbo != null && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <Tooltip title={`Parbo/Integral: ${(tabela.custo_mp.renda_processo.parbo * 100).toFixed(2)}% · Branco: ${(tabela.custo_mp.renda_processo.branco * 100).toFixed(2)}%`}>
+                      <span style={{ ...badge('slate'), cursor: 'help' }}>
+                        Renda: P/I {(tabela.custo_mp.renda_processo.parbo * 100).toFixed(1)}% · B {(tabela.custo_mp.renda_processo.branco * 100).toFixed(1)}% ({tabela.custo_mp.renda_processo.mes_referencia})
+                      </span>
+                    </Tooltip>
+                  </span>
+                )}
+                {tabela?.impostos?.periodo && (
+                  <Tooltip title="Média ponderada dos 3 meses anteriores ao mês atual">
+                    <span style={{ ...badge('slate'), cursor: 'help' }}>Impostos ref.: {tabela.impostos.periodo}</span>
+                  </Tooltip>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -495,7 +634,7 @@ export default function PriceTable() {
       </div>
 
       {/* ── Linha de switches de fonte ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', paddingLeft: 40, marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid #f1f5f9' }}>
+      <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: isMobile ? 8 : 16, flexWrap: 'wrap', flexDirection: isMobile ? 'column' : 'row', paddingLeft: isMobile ? 0 : 40, marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid #f1f5f9' }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap' }}>
           Fonte dos custos
           {tabela?.parametros_gerais && (
@@ -578,17 +717,35 @@ export default function PriceTable() {
           .price-table .ant-table-tbody > tr:nth-child(even) > td { background: #f8fafc; }
           .price-table .ant-table-tbody > tr:hover > td { background: #eff6ff !important; }
         `}</style>
-        <Table
-          className="price-table"
-          columns={columns}
-          dataSource={transformedData}
-          rowKey="representante"
-          size="middle"
-          pagination={false}
-          bordered
-          scroll={{ x: 'max-content', y: 'calc(100vh - 290px)' }}
-          locale={{ emptyText: loading ? 'Carregando...' : 'Nenhum dado encontrado' }}
-        />
+        {isMobile ? (
+          <div style={{ overflow: 'visible' }}>
+            {!loading && transformedData.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8', fontFamily: 'Inter, sans-serif' }}>
+                Nenhum dado encontrado
+              </div>
+            )}
+            {transformedData.map(row => (
+              <MobilePriceCard
+                key={String(row['representante'])}
+                row={row}
+                calcAtivos={tabela?.calculos_ativos ?? []}
+                dados={transformedData}
+              />
+            ))}
+          </div>
+        ) : (
+          <Table
+            className="price-table"
+            columns={columns}
+            dataSource={transformedData}
+            rowKey="representante"
+            size="middle"
+            pagination={false}
+            bordered
+            scroll={{ x: 'max-content', y: 'calc(100vh - 290px)' }}
+            locale={{ emptyText: 'Nenhum dado encontrado' }}
+          />
+        )}
       </Spin>
     </div>
   )
