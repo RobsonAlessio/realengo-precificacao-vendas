@@ -21,6 +21,7 @@ type Fonte = 'realizado' | 'parametrizado'
 type FonteConfig = { mp: Fonte; embalagem: Fonte; energia: Fonte; renda: Fonte }
 
 const FONTE_RESET: FonteConfig = { mp: 'realizado', embalagem: 'realizado', energia: 'realizado', renda: 'realizado' }
+const RENDA_DEFAULT = 0.73
 
 function fmt(n: number | null | undefined, type: 'moeda' | 'percentual' = 'moeda'): string {
   if (n == null || isNaN(n)) return '—'
@@ -87,8 +88,18 @@ function ReadonlyValue({ label, value, refValue, onRefClick }: {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
         <span style={{ ...subLabel, marginBottom: 0 }}>{label}</span>
-        {refValue && onRefClick && (
-          <span onClick={onRefClick} style={{ fontSize: 12, color: '#3b82f6', cursor: 'pointer', fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap' }}>
+        {refValue && (
+          <span
+            onClick={onRefClick}
+            style={{
+              fontSize: 12,
+              fontFamily: 'Inter, sans-serif',
+              whiteSpace: 'nowrap',
+              ...(onRefClick
+                ? { color: '#3b82f6', cursor: 'pointer' }
+                : { color: '#94a3b8', cursor: 'default' })
+            }}
+          >
             {refValue}
           </span>
         )}
@@ -261,14 +272,14 @@ export default function SalesSimulator() {
     const rp = tabela?.custo_mp?.renda_processo
     const pg = tabela?.parametros_gerais
     if (fonte.renda === 'parametrizado' && pg) {
-      if (!mpVar) return 0.73
-      return grupoPg === 'branco' ? (pg.renda_branco ?? 0.73) : (pg.renda_parbo ?? 0.73)
+      if (!mpVar) return RENDA_DEFAULT
+      return grupoPg === 'branco' ? (pg.renda_branco ?? RENDA_DEFAULT) : (pg.renda_parbo ?? RENDA_DEFAULT)
     }
-    if (!mpVar) return 0.73
+    if (!mpVar) return RENDA_DEFAULT
     if (mpVar.campo.includes('parbo') && rp?.parbo) return rp.parbo
     if (mpVar.campo.includes('branco') && rp?.branco) return rp.branco
     if (mpVar.campo.includes('integral') && rp?.integral) return rp.integral
-    return 0.73
+    return RENDA_DEFAULT
   }
   const renda = getRenda()
   const fardoVal = mpVar ? formValues[mpVar.campo] || 0 : 0
@@ -287,18 +298,18 @@ export default function SalesSimulator() {
   // Estado para renda parametrizada
   const getRendaParam = () => {
     const pg = tabela?.parametros_gerais
-    if (!pg) return 0.73
-    return grupoPg === 'branco' ? (pg.renda_branco ?? 0.73) : (pg.renda_parbo ?? 0.73)
+    if (!pg) return RENDA_DEFAULT
+    return grupoPg === 'branco' ? (pg.renda_branco ?? RENDA_DEFAULT) : (pg.renda_parbo ?? RENDA_DEFAULT)
   }
 
   // Renda REALIZADA (para usar quando MP volta para realizado)
   const getRendaRealizado = () => {
     const rp = tabela?.custo_mp?.renda_processo
-    if (!mpVar) return 0.73
+    if (!mpVar) return RENDA_DEFAULT
     if (mpVar.campo.includes('parbo') && rp?.parbo) return rp.parbo
     if (mpVar.campo.includes('branco') && rp?.branco) return rp.branco
     if (mpVar.campo.includes('integral') && rp?.integral) return rp.integral
-    return 0.73
+    return RENDA_DEFAULT
   }
   const rendaRealizado = getRendaRealizado()
 
@@ -454,7 +465,6 @@ export default function SalesSimulator() {
                       label="Fardo 30kg (Custo Efetivo)"
                       value={fmt(fardoVal)}
                       refValue={initialFardoVal != null ? fmt(initialFardoVal) : null}
-                      onRefClick={() => handleValueChange(mpVar.campo, initialFardoVal!)}
                     />
                   </FieldRow>
                 </div>
