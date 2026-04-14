@@ -175,27 +175,10 @@ function SidebarContent({
         flexShrink: 0,
       }}>
         {collapsed ? (
-          <div style={{
-            width: 36, height: 36,
-            borderRadius: 11,
-            background: 'rgba(59,130,246,0.12)',
-            border: '1px solid rgba(96,165,250,0.22)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 15, color: '#60a5fa' }}>P</span>
-          </div>
+          <img src="/etiqueta-de-preco.svg" alt="Logo" style={{ width: 34, height: 34 }} />
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{
-              width: 32, height: 32,
-              borderRadius: 10,
-              background: 'rgba(59,130,246,0.12)',
-              border: '1px solid rgba(96,165,250,0.22)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0,
-            }}>
-              <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 14, color: '#60a5fa' }}>P</span>
-            </div>
+            <img src="/etiqueta-de-preco.svg" alt="Logo" style={{ width: 30, height: 30, flexShrink: 0 }} />
             <div>
               <div style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 13, color: '#fff', lineHeight: 1.2 }}>Precificação</div>
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.32)', lineHeight: 1.3 }}>Realengo</div>
@@ -392,17 +375,9 @@ export default function AppLayout() {
             <IconMenu color="rgba(255,255,255,0.7)" />
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              width: 28, height: 28,
-              borderRadius: 8,
-              background: 'rgba(59,130,246,0.12)',
-              border: '1px solid rgba(96,165,250,0.22)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 12, color: '#60a5fa' }}>P</span>
-            </div>
+            <img src="/etiqueta-de-preco.svg" alt="Logo" style={{ width: 26, height: 26 }} />
             <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 14, color: '#fff' }}>
-              Precificação
+              Precificação Realengo
             </span>
           </div>
         </header>

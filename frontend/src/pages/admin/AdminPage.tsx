@@ -314,7 +314,10 @@ export default function AdminPage() {
   async function handleCreateUser(values: { username: string; password: string; role?: string }) {
     setCreateLoading(true)
     try {
-      const { data } = await api.post<UserRow>('/admin/usuarios', values)
+      const { data } = await api.post<UserRow>('/admin/usuarios', {
+        ...values,
+        username: values.username.trim().toLowerCase(),
+      })
       setUsers(prev => [...prev, data])
       message.success(`Usuário "${data.username}" criado`)
       setCreateModalOpen(false)

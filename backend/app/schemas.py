@@ -13,6 +13,11 @@ class CreateLocalUserRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     role: Optional[Literal["admin", "editor", "viewer"]] = None
 
+    @field_validator('username', mode='before')
+    @classmethod
+    def normalize_username(cls, v: str) -> str:
+        return v.strip().lower()
+
 
 class UpdateUsuarioRequest(BaseModel):
     role: Optional[Literal["admin", "editor", "viewer"]] = None
@@ -40,8 +45,13 @@ class Token(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    username: str = Field(min_length=1, max_length=64)
+    username: str = Field(min_length=1, max_length=64, pattern=r'^[a-zA-Z0-9._\-]+$')
     password: str = Field(min_length=1, max_length=128)
+
+    @field_validator('username', mode='before')
+    @classmethod
+    def normalize_username(cls, v: str) -> str:
+        return v.strip().lower()
 
 
 class ParametroRepresentanteBase(BaseModel):

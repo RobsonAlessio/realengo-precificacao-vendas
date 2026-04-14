@@ -18,7 +18,7 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      const { data: tokenData } = await api.post<Token>('/auth/login', { username, password })
+      const { data: tokenData } = await api.post<Token>('/auth/login', { username: username.trim().toLowerCase(), password })
       const { data: userData }  = await api.get<User>('/auth/me', {
         headers: { Authorization: `Bearer ${tokenData.access_token}` },
       })
@@ -60,9 +60,7 @@ export default function LoginPage() {
 
           {/* Logo */}
           <div className="flex flex-col items-center mb-8">
-            <div className="flex items-center justify-center w-14 h-14 rounded-[18px] bg-blue-500/10 backdrop-blur-md text-blue-400 font-outfit font-extrabold text-2xl border border-blue-400/20 shadow-[0_6px_20px_rgba(37,99,235,0.2),inset_0_1px_0_rgba(255,255,255,0.1)] mb-4">
-              P
-            </div>
+            <img src="/etiqueta-de-preco.svg" alt="Logo" className="w-16 h-16 mb-4 drop-shadow-[0_4px_12px_rgba(37,99,235,0.35)]" />
             <h1 className="text-white font-outfit font-bold text-xl tracking-tight">Precificação de Vendas</h1>
             <p className="text-slate-400 text-sm mt-1 font-sans">Entre com suas credenciais corporativas</p>
           </div>
