@@ -2,6 +2,7 @@ import json
 import math
 import os
 from fastapi import HTTPException
+from simpleeval import simple_eval, EvalWithCompoundTypes
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "../../config/precificacao.json")
 
@@ -26,14 +27,13 @@ def save_config(data: dict):
 
 
 def _safe_eval(formula: str, ctx: dict) -> float | None:
-    """Avalia fórmula com contexto restrito (sem builtins perigosos)."""
-    safe_globals = {
-        "__builtins__": {},
-        "abs": abs, "round": round, "min": min, "max": max,
-        "math": math,
-    }
+    """Avalia fórmula com contexto restrito usando simpleeval (sem eval/exec)."""
     try:
-        result = eval(formula, safe_globals, ctx)  # noqa: S307
+        result = simple_eval(
+            formula,
+            names=ctx,
+            functions={"abs": abs, "round": round, "min": min, "max": max},
+        )
         if result is None or (isinstance(result, float) and (math.isnan(result) or math.isinf(result))):
             return None
         return float(result)

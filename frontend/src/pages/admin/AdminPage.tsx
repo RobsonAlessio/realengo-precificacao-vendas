@@ -288,7 +288,7 @@ export default function AdminPage() {
   async function handleRoleChange(userId: number, role: string) {
     setUpdating(userId)
     try {
-      await api.put(`/admin/usuarios/${userId}?role=${role}`)
+      await api.put(`/admin/usuarios/${userId}`, { role })
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u))
       message.success('Permissão atualizada')
     } catch {
@@ -301,7 +301,7 @@ export default function AdminPage() {
   async function handleActiveChange(userId: number, is_active: boolean) {
     setUpdating(userId)
     try {
-      await api.put(`/admin/usuarios/${userId}?is_active=${is_active}`)
+      await api.put(`/admin/usuarios/${userId}`, { is_active })
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_active } : u))
       message.success(is_active ? 'Usuário ativado' : 'Usuário desativado')
     } catch {
@@ -1014,9 +1014,9 @@ export default function AdminPage() {
           <Form.Item
             label="Senha"
             name="password"
-            rules={[{ required: true, message: 'Informe a senha' }, { min: 6, message: 'Mínimo 6 caracteres' }]}
+            rules={[{ required: true, message: 'Informe a senha' }, { min: 8, message: 'Mínimo 8 caracteres' }]}
           >
-            <Input.Password placeholder="Mínimo 6 caracteres" autoComplete="new-password" />
+            <Input.Password placeholder="Mínimo 8 caracteres" autoComplete="new-password" />
           </Form.Item>
           <Form.Item label="Permissão" name="role">
             <Select placeholder="Selecionar (opcional)" options={ROLE_OPTIONS} allowClear />
@@ -1039,9 +1039,9 @@ export default function AdminPage() {
           <Form.Item
             label="Nova senha"
             name="new_password"
-            rules={[{ required: true, message: 'Informe a nova senha' }, { min: 6, message: 'Mínimo 6 caracteres' }]}
+            rules={[{ required: true, message: 'Informe a nova senha' }, { min: 8, message: 'Mínimo 8 caracteres' }]}
           >
-            <Input.Password placeholder="Mínimo 6 caracteres" autoComplete="new-password" />
+            <Input.Password placeholder="Mínimo 8 caracteres" autoComplete="new-password" />
           </Form.Item>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <Button onClick={() => { setPwModalUser(null); pwForm.resetFields() }}>Cancelar</Button>

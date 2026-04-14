@@ -1,6 +1,7 @@
-from pydantic import BaseModel
+import re
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime, date
-from typing import Optional
+from typing import Literal, Optional
 
 
 class UserBase(BaseModel):
@@ -8,13 +9,18 @@ class UserBase(BaseModel):
 
 
 class CreateLocalUserRequest(BaseModel):
-    username: str
-    password: str
-    role: Optional[str] = None
+    username: str = Field(min_length=1, max_length=64, pattern=r'^[a-zA-Z0-9._\-]+$')
+    password: str = Field(min_length=8, max_length=128)
+    role: Optional[Literal["admin", "editor", "viewer"]] = None
+
+
+class UpdateUsuarioRequest(BaseModel):
+    role: Optional[Literal["admin", "editor", "viewer"]] = None
+    is_active: Optional[bool] = None
 
 
 class ChangePasswordRequest(BaseModel):
-    new_password: str
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class UserResponse(UserBase):
@@ -34,8 +40,8 @@ class Token(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=128)
 
 
 class ParametroRepresentanteBase(BaseModel):
@@ -116,21 +122,24 @@ class ParametrosGeraisListResponse(BaseModel):
     vigencias: list[ParametroGeralResponse]
 
 
+_CHANGELOG_TIPOS = Literal["adicionado", "corrigido", "modificado", "removido"]
+
+
 class ChangelogEntryCreate(BaseModel):
-    versao: str
+    versao: str = Field(min_length=1, max_length=30)
     data_lancamento: date
-    tipo: str   # adicionado | corrigido | modificado | removido
-    titulo: str
-    descricao: Optional[str] = None
-    git_commit: Optional[str] = None  # SHA-1 do git HEAD; auto-preenchido se disponível
+    tipo: _CHANGELOG_TIPOS
+    titulo: str = Field(min_length=1, max_length=200)
+    descricao: Optional[str] = Field(default=None, max_length=1000)
+    git_commit: Optional[str] = None
 
 
 class ChangelogEntryUpdate(BaseModel):
-    versao: Optional[str] = None
+    versao: Optional[str] = Field(default=None, min_length=1, max_length=30)
     data_lancamento: Optional[date] = None
-    tipo: Optional[str] = None
-    titulo: Optional[str] = None
-    descricao: Optional[str] = None
+    tipo: Optional[_CHANGELOG_TIPOS] = None
+    titulo: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    descricao: Optional[str] = Field(default=None, max_length=1000)
     git_commit: Optional[str] = None
 
 
@@ -147,3 +156,47 @@ class ChangelogEntryResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# --- Config (precificacao.json) ---
+
+# Whitelist: apenas letras, números, operadores matemáticos, parênteses,
+# espaços, underscore e ponto — impede code injection nas fórmulas.
+_FORMULA_RE = re.compile(r'^[a-zA-Z0-9_\s\+\-\*/\(\)\.,]+$')
+
+
+class ConfigVariavel(BaseModel):
+    campo: str = Field(min_length=1, max_length=100)
+    label: str = Field(min_length=1, max_length=100)
+    formato: Optional[str] = None
+    campo_sc: Optional[str] = None
+
+
+class ConfigCalculo(BaseModel):
+    id: str = Field(min_length=1, max_length=100)
+    label: str = Field(min_length=1, max_length=100)
+    formula: str = Field(min_length=1, max_length=500)
+    formato: Optional[str] = None
+    grupo: Optional[str] = None
+    ativo: bool = True
+    variaveis: Optional[list[ConfigVariavel]] = None
+
+    @field_validator('formula')
+    @classmethod
+    def formula_segura(cls, v: str) -> str:
+        if not _FORMULA_RE.match(v):
+            raise ValueError('Fórmula contém caracteres não permitidos')
+        return v
+
+
+class ConfigColuna(BaseModel):
+    campo: str = Field(min_length=1, max_length=100)
+    label: str = Field(min_length=1, max_length=100)
+    visivel: bool = True
+    formato: Optional[str] = None
+    grupo: Optional[str] = None
+
+
+class ConfigUpdate(BaseModel):
+    calculos: Optional[list[ConfigCalculo]] = None
+    colunas: Optional[list[ConfigColuna]] = None

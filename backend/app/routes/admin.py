@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
+from datetime import date as date_type
+from fastapi import APIRouter, Depends, HTTPException, Body, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.database import get_db
@@ -30,8 +31,7 @@ def list_usuarios(
 @router.put("/usuarios/{user_id}")
 def update_usuario(
     user_id: int,
-    role: str = None,
-    is_active: bool = None,
+    payload: schemas.UpdateUsuarioRequest,
     current_user: models.User = auth_utils.require_role("admin"),
     db: Session = Depends(get_db),
 ):
@@ -39,24 +39,24 @@ def update_usuario(
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    
-    if role is not None:
-        user.role = role
-    if is_active is not None:
-        user.is_active = is_active
-    
+
+    if payload.role is not None:
+        user.role = payload.role
+    if payload.is_active is not None:
+        user.is_active = payload.is_active
+
     db.commit()
     db.refresh(user)
-    
+
     from app.audit import log_audit
     log_audit(
         db,
         current_user.id,
         "USER_UPDATED",
         "success",
-        {"updated_user_id": user.id, "updated_by": current_user.username, "role": role, "is_active": is_active}
+        {"updated_user_id": user.id, "updated_by": current_user.username, "role": payload.role, "is_active": payload.is_active}
     )
-    
+
     return {
         "id": user.id,
         "username": user.username,
@@ -143,9 +143,9 @@ def change_user_password(
 
 @router.get("/audit-logs")
 def list_audit_logs(
-    limit: int = 10,
-    date_from: str = None,
-    date_to: str = None,
+    limit: int = Query(default=10, ge=1, le=1000),
+    date_from: date_type = Query(default=None),
+    date_to: date_type = Query(default=None),
     current_user: models.User = auth_utils.require_role("admin"),
     db: Session = Depends(get_db),
 ):
@@ -156,9 +156,9 @@ def list_audit_logs(
         .outerjoin(models.User, models.AuditLog.user_id == models.User.id)
     )
     if date_from:
-        query = query.filter(models.AuditLog.created_at >= datetime.fromisoformat(date_from))
+        query = query.filter(models.AuditLog.created_at >= datetime.combine(date_from, datetime.min.time()))
     if date_to:
-        query = query.filter(models.AuditLog.created_at < datetime.fromisoformat(date_to) + timedelta(days=1))
+        query = query.filter(models.AuditLog.created_at < datetime.combine(date_to, datetime.min.time()) + timedelta(days=1))
     rows = query.order_by(desc(models.AuditLog.created_at)).limit(limit).all()
     return [
         {
