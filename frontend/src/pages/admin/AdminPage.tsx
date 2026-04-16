@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Table, Select, Switch, Tag, message, Modal, Form, Input, Button, Tabs, Tooltip, Popconfirm, DatePicker } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -219,6 +219,26 @@ export default function AdminPage() {
   const [clEditing, setClEditing] = useState<ChangelogEntry | null>(null)
   const [clSaving, setClSaving] = useState(false)
   const [clForm] = Form.useForm()
+
+  // — Filtros de usuários —
+  const [userSearch, setUserSearch] = useState('')
+  const [userRoleFilter, setUserRoleFilter] = useState<string | null>(null)
+  const [userActiveFilter, setUserActiveFilter] = useState<boolean | null>(true)
+
+  const filteredUsers = useMemo(() => {
+    let list = users
+    if (userSearch) {
+      const q = userSearch.toLowerCase()
+      list = list.filter(u => u.username.toLowerCase().includes(q))
+    }
+    if (userRoleFilter) {
+      list = list.filter(u => u.role === userRoleFilter)
+    }
+    if (userActiveFilter !== null) {
+      list = list.filter(u => u.is_active === userActiveFilter)
+    }
+    return list
+  }, [users, userSearch, userRoleFilter, userActiveFilter])
 
   // — Aba ativa —
   const [activeTab, setActiveTab] = useState('usuarios')
@@ -789,10 +809,42 @@ export default function AdminPage() {
               </div>
             </div>
           )}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+            <Input
+              placeholder="Buscar por nome..."
+              value={userSearch}
+              onChange={e => setUserSearch(e.target.value)}
+              allowClear
+              style={{ width: 200 }}
+            />
+            <Select
+              placeholder="Permissão"
+              value={userRoleFilter}
+              onChange={v => setUserRoleFilter(v)}
+              allowClear
+              style={{ width: 140 }}
+              options={[
+                { value: 'admin',  label: 'Admin' },
+                { value: 'editor', label: 'Editor' },
+                { value: 'viewer', label: 'Viewer' },
+              ]}
+            />
+            <Select
+              placeholder="Status"
+              value={userActiveFilter}
+              onChange={v => setUserActiveFilter(v ?? null)}
+              allowClear
+              style={{ width: 130 }}
+              options={[
+                { value: true,  label: 'Ativos' },
+                { value: false, label: 'Inativos' },
+              ]}
+            />
+          </div>
           <Table
             className="admin-table"
             columns={userColumns}
-            dataSource={users}
+            dataSource={filteredUsers}
             rowKey="id"
             size="middle"
             pagination={false}

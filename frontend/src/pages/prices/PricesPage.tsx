@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, CSSProperties } from 'react'
 import {
-  Table, Spin, Tooltip, Popover, Divider, Segmented,
+  Table, Spin, Tooltip, Popover, Divider, Select,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Typography } from 'antd'
@@ -72,6 +72,7 @@ interface TabelaResponse {
   mes: string | null
   impostos?: { periodo: string }
   parametros_gerais: ParametrosGerais | null
+  fonte_config: FonteConfig
 }
 
 type Fonte = 'realizado' | 'parametrizado'
@@ -103,48 +104,53 @@ function applyFonte(
 ): Record<string, unknown>[] {
   // Nenhuma fonte parametrizada ativa → retorna original
   const anyParam = Object.values(fonte).some(f => f === 'parametrizado')
-  if (!anyParam || !pg) return dados
+  if (!anyParam) return dados
 
   return dados.map(row => {
     const r = { ...row }
 
     // Determina renda efetiva por grupo
-    const rendaParbo = fonte.renda === 'parametrizado' && pg.renda_parbo != null
-      ? pg.renda_parbo
+    // Sem pg cadastrado + fonte parametrizada → null (força cadastro)
+    const rendaParbo = fonte.renda === 'parametrizado'
+      ? (pg?.renda_parbo ?? null)
       : (rendaRealizado?.parbo ?? 0.73)
-    const rendaBranco = fonte.renda === 'parametrizado' && pg.renda_branco != null
-      ? pg.renda_branco
+    const rendaBranco = fonte.renda === 'parametrizado'
+      ? (pg?.renda_branco ?? null)
       : (rendaRealizado?.branco ?? 0.73)
 
     // Determina MP efetiva por grupo (fardo)
-    const calcMpFardo = (saco: number | null, renda: number) =>
-      saco != null ? saco * 30 / (renda * 50) : null
+    const calcMpFardo = (saco: number | null, renda: number | null) =>
+      saco != null && renda != null ? saco * 30 / (renda * 50) : null
 
     if (fonte.mp === 'parametrizado') {
-      const mpPSaco = pg.mp_parbo_saco
-      const mpBSaco = pg.mp_branco_saco
-      const mpPFardo = calcMpFardo(mpPSaco, rendaParbo)
-      const mpBFardo = calcMpFardo(mpBSaco, rendaBranco)
-      if (mpPFardo != null) { r['mp_parbo'] = mpPFardo; r['mp_integral'] = mpPFardo }
-      if (mpBFardo != null) r['mp_branco'] = mpBFardo
-      // Atualiza campos _sc (saco) para o tooltip exibir valores parametrizados
-      if (mpPSaco != null) { r['mp_parbo_sc'] = mpPSaco; r['mp_integral_sc'] = mpPSaco }
-      if (mpBSaco != null) r['mp_branco_sc'] = mpBSaco
-    } else if (fonte.renda === 'parametrizado') {
+      const mpPSaco = pg?.mp_parbo_saco ?? null
+      const mpBSaco = pg?.mp_branco_saco ?? null
+      const effRendaP = rendaParbo ?? (rendaRealizado?.parbo ?? 0.73)
+      const effRendaB = rendaBranco ?? (rendaRealizado?.branco ?? 0.73)
+      const mpPFardo = calcMpFardo(mpPSaco, effRendaP)
+      const mpBFardo = calcMpFardo(mpBSaco, effRendaB)
+      // Sem parâmetro → zera (não usa realizado como fallback)
+      r['mp_parbo'] = mpPFardo; r['mp_integral'] = mpPFardo
+      r['mp_branco'] = mpBFardo
+      r['mp_parbo_sc'] = mpPSaco; r['mp_integral_sc'] = mpPSaco
+      r['mp_branco_sc'] = mpBSaco
+    } else if (fonte.renda === 'parametrizado' && rendaParbo != null) {
       // MP realizado mas renda parametrizada → reconverte usando novo renda
       const mpPSc = mpSc?.parbo
       const mpBSc = mpSc?.branco
       if (mpPSc != null) { const v = calcMpFardo(mpPSc, rendaParbo); if (v != null) { r['mp_parbo'] = v; r['mp_integral'] = v } }
-      if (mpBSc != null) { const v = calcMpFardo(mpBSc, rendaBranco); if (v != null) r['mp_branco'] = v }
+      if (mpBSc != null && rendaBranco != null) { const v = calcMpFardo(mpBSc, rendaBranco); if (v != null) r['mp_branco'] = v }
     }
 
     if (fonte.embalagem === 'parametrizado') {
-      if (pg.embalagem_parbo != null)  { r['embalagem_parbo'] = pg.embalagem_parbo; r['embalagem_integral'] = pg.embalagem_parbo }
-      if (pg.embalagem_branco != null) r['embalagem_branco'] = pg.embalagem_branco
+      // Sem parâmetro → zera
+      r['embalagem_parbo'] = pg?.embalagem_parbo ?? null; r['embalagem_integral'] = pg?.embalagem_parbo ?? null
+      r['embalagem_branco'] = pg?.embalagem_branco ?? null
     }
     if (fonte.energia === 'parametrizado') {
-      if (pg.energia_parbo != null)  { r['energia_parbo'] = pg.energia_parbo; r['energia_integral'] = pg.energia_parbo }
-      if (pg.energia_branco != null) r['energia_branco'] = pg.energia_branco
+      // Sem parâmetro → zera
+      r['energia_parbo'] = pg?.energia_parbo ?? null; r['energia_integral'] = pg?.energia_parbo ?? null
+      r['energia_branco'] = pg?.energia_branco ?? null
     }
 
     // Recalcula preços para cada calc ativo
@@ -197,16 +203,6 @@ function IconGrid() {
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1d4e89" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
       <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-    </svg>
-  )
-}
-
-function IconRefresh({ spinning }: { spinning: boolean }) {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-      style={{ animation: spinning ? 'spin 0.8s linear infinite' : 'none', transformOrigin: 'center' }}>
-      <polyline points="23 4 23 10 17 10"/>
-      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
     </svg>
   )
 }
@@ -494,18 +490,13 @@ function buildColumns(
 
 // ── componente ───────────────────────────────────────────────────────────────
 
-const FONTE_OPTIONS = [
-  { label: 'Realizado', value: 'realizado' },
-  { label: 'Param.', value: 'parametrizado' },
-]
-
 export default function PriceTable() {
   const [tabela, setTabela] = useState<TabelaResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError]   = useState<string | null>(null)
-  const [fonte, setFonte] = useState<FonteConfig>({ mp: 'realizado', embalagem: 'realizado', energia: 'realizado', renda: 'realizado' })
   const isMobile = useIsMobile()
   const [badgesExpanded, setBadgesExpanded] = useState(false)
+  const [mobileRepFilter, setMobileRepFilter] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true); setError(null)
@@ -520,7 +511,7 @@ export default function PriceTable() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  const hasParam = tabela?.parametros_gerais != null
+  const fonte = tabela?.fonte_config ?? { mp: 'realizado', embalagem: 'realizado', energia: 'realizado', renda: 'realizado' } as FonteConfig
 
   const rendaRealizado = tabela?.custo_mp?.renda_processo
     ? { parbo: tabela.custo_mp.renda_processo.parbo, branco: tabela.custo_mp.renda_processo.branco }
@@ -539,9 +530,6 @@ export default function PriceTable() {
   const avisoMp  = tabela?.custo_mp?.aviso ?? null
   const avisoProd = tabela?.custo_producao?.aviso ?? null
   const semDados = tabela !== null && tabela?.dados?.length === 0
-
-  const setF = (field: keyof FonteConfig) => (val: string | number) =>
-    setFonte(prev => ({ ...prev, [field]: val as Fonte }))
 
   return (
     <div style={{ background: '#ffffff', borderRadius: isMobile ? 12 : 16, border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04)', padding: isMobile ? '14px 10px 16px' : '20px 24px 24px', height: isMobile ? 'auto' : 'calc(100vh - 32px)', overflow: isMobile ? 'visible' : 'hidden', minHeight: isMobile ? 'calc(100vh - 72px)' : undefined }}>
@@ -622,55 +610,28 @@ export default function PriceTable() {
           </div>
         </div>
 
-        {/* Botão Atualizar */}
-        <button onClick={fetchData} disabled={loading}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#475569', fontSize: 13, fontFamily: 'Inter, sans-serif', fontWeight: 500, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.65 : 1, transition: 'all 0.2s', outline: 'none', whiteSpace: 'nowrap', alignSelf: 'flex-start' }}
-          onMouseEnter={e => { if (!loading) { e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.color = '#1d4e89' } }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#475569' }}
-        >
-          <IconRefresh spinning={loading} />
-          {loading ? 'Atualizando...' : 'Atualizar'}
-        </button>
       </div>
 
-      {/* ── Linha de switches de fonte ── */}
-      <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: isMobile ? 8 : 16, flexWrap: 'wrap', flexDirection: isMobile ? 'column' : 'row', paddingLeft: isMobile ? 0 : 40, marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid #f1f5f9' }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b', fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap' }}>
-          Fonte dos custos
-          {tabela?.parametros_gerais && (
-            <Tooltip title={`Vigência dos parâmetros: ${tabela.parametros_gerais.data_vigencia}`}>
-              <span style={{ ...badge('blue'), cursor: 'help', borderColor: 'rgba(29,78,137,0.3)', marginLeft: 8 }}>
-                {tabela.parametros_gerais.data_vigencia}
-              </span>
-            </Tooltip>
-          )}
-          {!hasParam && <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6 }}>(sem insumos)</span>}
-        </span>
-        {(['mp', 'embalagem', 'energia', 'renda'] as const).map(campo => {
-          const isParam = fonte[campo] === 'parametrizado'
-          return (
-            <div key={campo} style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '2px 7px', borderRadius: 7,
-              background: isParam ? 'rgba(59,130,246,0.07)' : 'transparent',
-              border: `1px solid ${isParam ? 'rgba(59,130,246,0.2)' : 'transparent'}`,
-              transition: 'all 0.2s',
-            }}>
-              <span style={{ fontSize: 12, fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap', color: isParam ? '#1d4e89' : '#475569', fontWeight: isParam ? 600 : 400 }}>
-                {campo === 'mp' ? 'MP' : campo.charAt(0).toUpperCase() + campo.slice(1)}
-              </span>
-              <Segmented
-                size="small"
-                disabled={!hasParam}
-                value={fonte[campo]}
-                onChange={setF(campo)}
-                options={FONTE_OPTIONS}
-                style={{ fontFamily: 'Inter, sans-serif', fontSize: 11 }}
-              />
-            </div>
-          )
-        })}
-      </div>
+      {/* ── Filtro de representante (mobile) ── */}
+      {isMobile && transformedData.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <Select
+            showSearch
+            allowClear
+            placeholder="Filtrar representante..."
+            style={{ width: '100%', fontFamily: 'Inter, sans-serif' }}
+            value={mobileRepFilter}
+            onChange={setMobileRepFilter}
+            options={transformedData.map(r => {
+              const cod = r['codigo_representante']
+              const nome = String(r['representante'] ?? '')
+              return { value: nome, label: cod != null ? `${cod} - ${nome}` : nome }
+            })}
+            filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+            size="middle"
+          />
+        </div>
+      )}
 
       {/* ── Alertas ── */}
       {semDados && !error && (
@@ -724,7 +685,9 @@ export default function PriceTable() {
                 Nenhum dado encontrado
               </div>
             )}
-            {transformedData.map(row => (
+            {transformedData
+              .filter(row => !mobileRepFilter || row['representante'] === mobileRepFilter)
+              .map(row => (
               <MobilePriceCard
                 key={String(row['representante'])}
                 row={row}
@@ -742,7 +705,7 @@ export default function PriceTable() {
             size="middle"
             pagination={false}
             bordered
-            scroll={{ x: 'max-content', y: 'calc(100vh - 290px)' }}
+            scroll={{ x: 'max-content', y: 'calc(100vh - 240px)' }}
             locale={{ emptyText: 'Nenhum dado encontrado' }}
           />
         )}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Table, Button, Select, Space, Typography, Spin, Tag, Alert,
-  InputNumber, Popconfirm, message, Card, Tooltip, Tabs,
+  InputNumber, Popconfirm, message, Card, Tooltip, Tabs, Segmented,
 } from 'antd'
 import {
   SaveOutlined, ReloadOutlined, PlusOutlined, DeleteOutlined,
@@ -377,6 +377,127 @@ function RepresentantesParamsTab() {
   )
 }
 
+// ── Tipos — Fonte dos Custos ─────────────────────────────────────────────────
+
+type FonteTipo = 'realizado' | 'parametrizado'
+interface FonteConfig { fonte_mp: FonteTipo; fonte_embalagem: FonteTipo; fonte_energia: FonteTipo; fonte_renda: FonteTipo }
+
+const FONTE_DEFAULT: FonteConfig = { fonte_mp: 'realizado', fonte_embalagem: 'realizado', fonte_energia: 'realizado', fonte_renda: 'realizado' }
+const FONTE_OPTIONS = [
+  { label: 'Realizado', value: 'realizado' },
+  { label: 'Param.', value: 'parametrizado' },
+]
+const FONTE_LABELS: { key: keyof FonteConfig; label: string }[] = [
+  { key: 'fonte_mp', label: 'Matéria-Prima' },
+  { key: 'fonte_embalagem', label: 'Embalagem' },
+  { key: 'fonte_energia', label: 'Energia' },
+  { key: 'fonte_renda', label: 'Renda' },
+]
+
+// ── Sub-componente: Card de Fonte dos Custos (admin) ─────────────────────────
+
+function FonteCustosCard() {
+  const role = useAuthStore(s => s.user?.role)
+  const [fonteConfig, setFonteConfig] = useState<FonteConfig>(FONTE_DEFAULT)
+  const [savedFonte, setSavedFonte] = useState<FonteConfig>(FONTE_DEFAULT)
+  const [loadingFonte, setLoadingFonte] = useState(false)
+  const [savingFonte, setSavingFonte] = useState(false)
+
+  useEffect(() => {
+    setLoadingFonte(true)
+    api.get<FonteConfig>('/config/fonte-custos')
+      .then(({ data }) => { setFonteConfig(data); setSavedFonte(data) })
+      .catch(() => {})
+      .finally(() => setLoadingFonte(false))
+  }, [])
+
+  const fonteDirty = fonteConfig.fonte_mp !== savedFonte.fonte_mp
+    || fonteConfig.fonte_embalagem !== savedFonte.fonte_embalagem
+    || fonteConfig.fonte_energia !== savedFonte.fonte_energia
+    || fonteConfig.fonte_renda !== savedFonte.fonte_renda
+
+  const handleSaveFonte = async () => {
+    setSavingFonte(true)
+    try {
+      const { data } = await api.put<FonteConfig>('/config/fonte-custos', fonteConfig)
+      setFonteConfig(data); setSavedFonte(data)
+      message.success('Fonte dos custos atualizada!')
+    } catch {
+      message.error('Erro ao salvar fonte dos custos')
+    } finally { setSavingFonte(false) }
+  }
+
+  const isAdmin = role === 'admin'
+
+  return (
+    <Card
+      style={{ ...cardStyle, marginBottom: 16 }}
+      bodyStyle={{ padding: '12px 16px' }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <IconSettings />
+          <Text strong style={{ color: '#6366f1', fontSize: 14, fontFamily: 'Inter, sans-serif' }}>
+            Fonte dos Custos
+          </Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            — Define se os cálculos usarão valores reais ou parametrizados
+          </Text>
+        </div>
+        {isAdmin && (
+          <Button
+            type={fonteDirty ? 'primary' : 'default'}
+            size="small"
+            icon={<SaveOutlined />}
+            onClick={handleSaveFonte}
+            loading={savingFonte}
+            disabled={!fonteDirty}
+          >
+            Salvar
+          </Button>
+        )}
+      </div>
+      <Spin spinning={loadingFonte}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          {FONTE_LABELS.map(({ key, label }) => {
+            const isParam = fonteConfig[key] === 'parametrizado'
+            return (
+              <div key={key} style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '4px 10px', borderRadius: 8,
+                background: isParam ? 'rgba(99,102,241,0.06)' : 'rgba(100,116,139,0.04)',
+                border: `1px solid ${isParam ? 'rgba(99,102,241,0.2)' : '#e2e8f0'}`,
+                transition: 'all 0.2s',
+              }}>
+                <span style={{
+                  fontSize: 13, fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap',
+                  color: isParam ? '#4338ca' : '#475569',
+                  fontWeight: isParam ? 600 : 500,
+                }}>
+                  {label}
+                </span>
+                {isAdmin ? (
+                  <Segmented
+                    size="small"
+                    value={fonteConfig[key]}
+                    onChange={v => setFonteConfig(prev => ({ ...prev, [key]: v as FonteTipo }))}
+                    options={FONTE_OPTIONS}
+                    style={{ fontFamily: 'Inter, sans-serif', fontSize: 11 }}
+                  />
+                ) : (
+                  <Tag color={isParam ? 'blue' : 'default'} style={{ margin: 0, fontSize: 11 }}>
+                    {isParam ? 'Parametrizado' : 'Realizado'}
+                  </Tag>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </Spin>
+    </Card>
+  )
+}
+
 // ── Aba 2: Parâmetros Gerais (Insumos) ────────────────────────────────────────
 
 function ParametrosGeraisTab() {
@@ -390,21 +511,8 @@ function ParametrosGeraisTab() {
   const [error, setError] = useState<string | null>(null)
 
   const role = useAuthStore(s => s.user?.role)
-  const todayYear = now.getFullYear()
-  const todayMonth = now.getMonth() + 1
-  const todayDay = now.getDate()
-
-  const isViewingPastPeriod = ano < todayYear || (ano === todayYear && mes < todayMonth)
-  const isViewingCurrentPeriod = ano === todayYear && mes === todayMonth
-
-  function isRowEditable(row: VigenciaGeralRow): boolean {
-    if (role === 'admin') return true
-    if (role === 'editor') {
-      if (isViewingPastPeriod) return false
-      if (isViewingCurrentPeriod) return row.dia >= todayDay || row.isNew
-      return true
-    }
-    return false
+  function isRowEditable(_row: VigenciaGeralRow): boolean {
+    return role === 'admin'
   }
 
   const fetchVigencias = useCallback(async () => {
@@ -437,7 +545,9 @@ function ParametrosGeraisTab() {
 
   function addVigencia() {
     const totalDias = diasDoMes(ano, mes)
-    const newDia = isViewingCurrentPeriod ? Math.min(todayDay, totalDias) : 1
+    const _today = new Date()
+    const isCurrent = ano === _today.getFullYear() && mes === _today.getMonth() + 1
+    const newDia = isCurrent ? Math.min(_today.getDate(), totalDias) : 1
     setVigencias(prev => [...prev, {
       key: buildKey('geral', newDia, `new_${Date.now()}`),
       db_id: null, dia: newDia,
@@ -479,13 +589,12 @@ function ParametrosGeraisTab() {
   const totalDias = diasDoMes(ano, mes)
   const diasOptions = Array.from({ length: totalDias }, (_, i) => {
     const d = i + 1
-    const disabled = role === 'editor' && isViewingCurrentPeriod && d < todayDay
-    return { value: d, label: `Dia ${String(d).padStart(2, '0')}`, disabled }
+    return { value: d, label: `Dia ${String(d).padStart(2, '0')}`, disabled: role !== 'admin' }
   })
 
   const dirtyCount = vigencias.filter(v => v.isDirty).length
-  const canAdd = role === 'admin' || (role === 'editor' && !isViewingPastPeriod)
-  const canSave = role !== 'viewer'
+  const canAdd = role === 'admin'
+  const canSave = role === 'admin'
 
   const numInput = (val: number | null, row: VigenciaGeralRow, field: keyof VigenciaGeralRow, prefix = 'R$', precision = 2) => (
     <InputNumber size="small" value={val ?? undefined} prefix={prefix} min={0} precision={precision}
@@ -541,6 +650,8 @@ function ParametrosGeraisTab() {
 
   return (
     <div style={{ height: isMobile ? 'auto' : 'calc(100vh - 140px)', overflow: isMobile ? 'visible' : 'hidden' }}>
+      <FonteCustosCard />
+
       <Card style={{ ...cardStyle, marginBottom: 16 }} bodyStyle={{ padding: isMobile ? '12px 10px' : '16px 20px' }}>
         <Space wrap align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
           <Space wrap align="center">

@@ -9,7 +9,7 @@ from app.limiter import limiter
 from app.database import Base, engine, SessionLocal
 from app import models
 from app.auth import hash_password
-from app.routes import auth, prices, config, representantes, admin, changelog, parametros_gerais
+from app.routes import auth, prices, config, representantes, admin, changelog, parametros_gerais, config_fonte
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,7 @@ app.include_router(representantes.router)
 app.include_router(admin.router)
 app.include_router(changelog.router)
 app.include_router(parametros_gerais.router)
+app.include_router(config_fonte.router)
 
 
 @app.on_event("startup")

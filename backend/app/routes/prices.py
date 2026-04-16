@@ -163,6 +163,15 @@ def tabela(
             "renda_branco":     rb,
         }
 
+    # Config global de fonte dos custos
+    fonte_cfg = db.query(models.ConfigFonteCustos).filter(models.ConfigFonteCustos.id == 1).first()
+    fonte_config = {
+        "mp":        fonte_cfg.fonte_mp        if fonte_cfg else "realizado",
+        "embalagem": fonte_cfg.fonte_embalagem if fonte_cfg else "realizado",
+        "energia":   fonte_cfg.fonte_energia   if fonte_cfg else "realizado",
+        "renda":     fonte_cfg.fonte_renda     if fonte_cfg else "realizado",
+    }
+
     return {
         "colunas"           : config.get("colunas", []),
         "calculos_ativos"   : [c for c in config.get("calculos", []) if c.get("ativo", False)],
@@ -172,6 +181,7 @@ def tabela(
         "mes"               : mes_ref,
         "impostos"          : {"periodo": periodo_impostos},
         "parametros_gerais" : parametros_gerais,
+        "fonte_config"      : fonte_config,
     }
 
 

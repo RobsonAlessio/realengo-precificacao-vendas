@@ -80,3 +80,15 @@ class ParametroRepresentante(Base):
     __table_args__ = (
         UniqueConstraint("representante", "data_vigencia", name="uq_rep_data"),
     )
+
+
+class ConfigFonteCustos(Base):
+    __tablename__ = "config_fonte_custos"
+
+    id              = Column(Integer, primary_key=True)
+    fonte_mp        = Column(String(20), nullable=False, default="realizado")
+    fonte_embalagem = Column(String(20), nullable=False, default="realizado")
+    fonte_energia   = Column(String(20), nullable=False, default="realizado")
+    fonte_renda     = Column(String(20), nullable=False, default="realizado")
+    atualizado_em   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    atualizado_por  = Column(String(100), nullable=True)

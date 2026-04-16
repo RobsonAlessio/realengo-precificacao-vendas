@@ -8,9 +8,9 @@ from app.database import get_db
 router = APIRouter(prefix="/parametros-gerais", tags=["parametros-gerais"])
 
 
-def _require_editor(current_user: models.User = Depends(auth_utils.get_current_user)):
-    if current_user.role not in ("admin", "editor"):
-        raise HTTPException(status_code=403, detail="Acesso negado.")
+def _require_admin(current_user: models.User = Depends(auth_utils.get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas administradores podem editar parâmetros de insumos.")
     return current_user
 
 
@@ -49,17 +49,11 @@ def list_parametros_gerais(
 def upsert_parametros_gerais(
     items: list[schemas.ParametroGeralCreate],
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(_require_editor),
+    current_user: models.User = Depends(_require_admin),
 ):
-    """Upsert de vigências de parâmetros gerais."""
-    hoje = date.today()
+    """Upsert de vigências de parâmetros gerais. Somente admin."""
     salvos = 0
     for item in items:
-        if current_user.role == "editor" and item.data_vigencia < hoje:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Editor não pode editar vigência passada ({item.data_vigencia}).",
-            )
         stmt = pg_insert(models.ParametroGeral).values(
             data_vigencia=item.data_vigencia,
             mp_parbo_saco=item.mp_parbo_saco,
@@ -96,15 +90,12 @@ def upsert_parametros_gerais(
 def delete_parametro_geral(
     param_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(_require_editor),
+    current_user: models.User = Depends(_require_admin),
 ):
-    """Remove uma vigência de parâmetros gerais."""
+    """Remove uma vigência de parâmetros gerais. Somente admin."""
     registro = db.query(models.ParametroGeral).filter(models.ParametroGeral.id == param_id).first()
     if not registro:
         raise HTTPException(status_code=404, detail="Registro não encontrado.")
-    hoje = date.today()
-    if current_user.role == "editor" and registro.data_vigencia < hoje:
-        raise HTTPException(status_code=403, detail="Editor não pode excluir vigência passada.")
     db.delete(registro)
     db.commit()
     return {"ok": True}

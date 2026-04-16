@@ -210,3 +210,27 @@ class ConfigColuna(BaseModel):
 class ConfigUpdate(BaseModel):
     calculos: Optional[list[ConfigCalculo]] = None
     colunas: Optional[list[ConfigColuna]] = None
+
+
+# --- Fonte dos Custos (config global) ---
+
+_FONTE_TIPO = Literal["realizado", "parametrizado"]
+
+
+class FonteCustosResponse(BaseModel):
+    fonte_mp: _FONTE_TIPO
+    fonte_embalagem: _FONTE_TIPO
+    fonte_energia: _FONTE_TIPO
+    fonte_renda: _FONTE_TIPO
+    atualizado_em: Optional[datetime] = None
+    atualizado_por: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class FonteCustosUpdate(BaseModel):
+    fonte_mp: _FONTE_TIPO = "realizado"
+    fonte_embalagem: _FONTE_TIPO = "realizado"
+    fonte_energia: _FONTE_TIPO = "realizado"
+    fonte_renda: _FONTE_TIPO = "realizado"

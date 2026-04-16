@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, CSSProperties } from 'react'
-import { Select, Radio, InputNumber, Spin, Tooltip, Segmented } from 'antd'
+import { Select, Radio, InputNumber, Spin, Tooltip } from 'antd'
 import { SwapOutlined, InfoCircleOutlined } from '@ant-design/icons'
 import api from '../../api/client'
 import { useIsMobile } from '../../hooks/useIsMobile'
@@ -15,12 +15,11 @@ interface ParametrosGerais {
   energia_parbo: number | null; energia_branco: number | null
   renda_parbo: number | null; renda_branco: number | null
 }
-interface TabelaResponse { calculos_ativos: CalcDef[]; dados: Record<string, any>[]; custo_mp: any; custo_producao: any; mes: string | null; parametros_gerais?: ParametrosGerais | null }
+interface FonteConfig { mp: 'realizado' | 'parametrizado'; embalagem: 'realizado' | 'parametrizado'; energia: 'realizado' | 'parametrizado'; renda: 'realizado' | 'parametrizado' }
+interface TabelaResponse { calculos_ativos: CalcDef[]; dados: Record<string, any>[]; custo_mp: any; custo_producao: any; mes: string | null; parametros_gerais?: ParametrosGerais | null; fonte_config?: FonteConfig }
 interface RepAtivo { codigo: number | null; fantasia: string; comissao: number | null; imposto: number | null }
-type Fonte = 'realizado' | 'parametrizado'
-type FonteConfig = { mp: Fonte; embalagem: Fonte; energia: Fonte; renda: Fonte }
 
-const FONTE_RESET: FonteConfig = { mp: 'realizado', embalagem: 'realizado', energia: 'realizado', renda: 'realizado' }
+const FONTE_DEFAULT: FonteConfig = { mp: 'realizado', embalagem: 'realizado', energia: 'realizado', renda: 'realizado' }
 const RENDA_DEFAULT = 0.73
 
 function fmt(n: number | null | undefined, type: 'moeda' | 'percentual' = 'moeda'): string {
@@ -178,8 +177,9 @@ export default function SalesSimulator() {
   const [custoAdicional, setCustoAdicional] = useState<number>(0)
   const [deducaoAdicional, setDeducaoAdicional] = useState<number>(0)
   const [manualFinalPrice, setManualFinalPrice] = useState<number | null>(null)
-  const [fonte, setFonte] = useState<FonteConfig>(FONTE_RESET)
   const isMobile = useIsMobile()
+
+  const fonte = tabela?.fonte_config ?? FONTE_DEFAULT
 
   useEffect(() => {
     setLoading(true)
@@ -219,8 +219,40 @@ export default function SalesSimulator() {
       }
       nv[v.campo] = isNaN(val) ? 0 : val
     })
+    // Aplica fonte parametrizada conforme config do admin
+    // Sem parâmetro cadastrado + fonte parametrizada → zera (não usa realizado)
+    const pg = tabela?.parametros_gerais
+    const fc = tabela?.fonte_config ?? FONTE_DEFAULT
+    const gp = calcDef?.grupo?.toLowerCase() === 'branco' ? 'branco' : 'parbo'
+    if (fc.mp === 'parametrizado') {
+      const mpCampo = calcDef?.variaveis?.find(v => v.campo.startsWith('mp_'))?.campo
+      if (mpCampo) {
+        const paramSaco = pg ? (gp === 'branco' ? pg.mp_branco_saco : pg.mp_parbo_saco) : null
+        if (paramSaco != null) {
+          const rendaVal = fc.renda === 'parametrizado'
+            ? (pg ? (gp === 'branco' ? pg.renda_branco : pg.renda_parbo) : null) ?? RENDA_DEFAULT
+            : (() => { const rp = tabela?.custo_mp?.renda_processo; if (!rp) return RENDA_DEFAULT; return gp === 'branco' ? (rp.branco ?? RENDA_DEFAULT) : (rp.parbo ?? RENDA_DEFAULT) })()
+          nv[mpCampo] = (paramSaco * 30) / (rendaVal * 50)
+        } else {
+          nv[mpCampo] = 0
+        }
+      }
+    }
+    if (fc.embalagem === 'parametrizado') {
+      const embCampo = calcDef?.variaveis?.find(v => v.campo.startsWith('embalagem_'))?.campo
+      if (embCampo) {
+        const val = pg ? (gp === 'branco' ? pg.embalagem_branco : pg.embalagem_parbo) : null
+        nv[embCampo] = val ?? 0
+      }
+    }
+    if (fc.energia === 'parametrizado') {
+      const eneCampo = calcDef?.variaveis?.find(v => v.campo.startsWith('energia_'))?.campo
+      if (eneCampo) {
+        const val = pg ? (gp === 'branco' ? pg.energia_branco : pg.energia_parbo) : null
+        nv[eneCampo] = val ?? 0
+      }
+    }
     setFormValues(nv); setInitialValues(nv); setManualFinalPrice(null); setCustoAdicional(0); setDeducaoAdicional(0)
-    setFonte(FONTE_RESET)
   }, [selectedRep, calcDef, repData, tabela, globalCosts, comissaoByRep, impostoByRep])
 
   const { somaFixos, somaPcts } = useMemo(() => {
@@ -325,58 +357,14 @@ export default function SalesSimulator() {
     }
   }, [initialValues, mpVar])
 
-  // Handler de switch de fonte
-  const handleFonteChange = (key: keyof FonteConfig, value: Fonte) => {
-    const pg = tabela?.parametros_gerais
-    if (!pg) {
-      setFonte(prev => ({ ...prev, [key]: value }))
-      return
-    }
-    if (key === 'mp' && mpVar) {
-      if (value === 'parametrizado') {
-        const paramSaco = grupoPg === 'branco' ? pg.mp_branco_saco : pg.mp_parbo_saco
-        const currentRenda = fonte.renda === 'parametrizado' ? getRendaParam() : renda
-        if (paramSaco != null) {
-          const newFardo = calcMpFardo(paramSaco, currentRenda)
-          if (newFardo != null) {
-            setMpSacoBase(paramSaco)
-            setFormValues(p => ({ ...p, [mpVar.campo]: newFardo }))
-          }
-        }
-      } else {
-        const fardoOriginal = initialValues[mpVar.campo]
-        if (fardoOriginal != null) {
-          // Usa renda REALIZADA para recalcular SACO original
-          const originalSaco = calcSacoFromFardo(fardoOriginal, rendaRealizado)
-          setMpSacoBase(originalSaco)
-          // FARDO também usa renda realizada
-          setFormValues(p => ({ ...p, [mpVar.campo]: fardoOriginal }))
-        }
-      }
-    } else if (key === 'embalagem' && embalagemVar) {
-      const newVal = value === 'parametrizado'
-        ? (grupoPg === 'branco' ? pg.embalagem_branco : pg.embalagem_parbo)
-        : initialValues[embalagemVar.campo]
-      if (newVal != null) setFormValues(p => ({ ...p, [embalagemVar.campo]: newVal }))
-    } else if (key === 'energia' && energiaVar) {
-      const newVal = value === 'parametrizado'
-        ? (grupoPg === 'branco' ? pg.energia_branco : pg.energia_parbo)
-        : initialValues[energiaVar.campo]
-      if (newVal != null) setFormValues(p => ({ ...p, [energiaVar.campo]: newVal }))
-    }
-    setFonte(prev => ({ ...prev, [key]: value }))
-  }
-
-  // Recalcula FARDO quando renda muda (mas NÃO quando fonte.mp mudou recently)
+  // Recalcula FARDO quando mpSacoBase muda
   useEffect(() => {
     if (!mpVar || mpSacoBase == null) return
-    // Não recalcula se MP está em modo realizado (mpSacoBase já é o valor realizado)
-    const currentRenda = fonte.renda === 'parametrizado' ? getRendaParam() : renda
-    const newFardo = calcMpFardo(mpSacoBase, currentRenda)
+    const newFardo = calcMpFardo(mpSacoBase, renda)
     if (newFardo != null) {
       setFormValues(p => ({ ...p, [mpVar.campo]: newFardo }))
     }
-  }, [fonte.renda, mpSacoBase])
+  }, [mpSacoBase])
 
   // Handler para editar SACO diretamente
   const handleSacoChange = (newSaco: number) => {
@@ -387,18 +375,6 @@ export default function SalesSimulator() {
       setFormValues(p => ({ ...p, [mpVar!.campo]: newFardo }))
     }
   }
-
-  const hasPg = !!tabela?.parametros_gerais
-  const fonteOptions = [
-    { label: 'Realizado', value: 'realizado' },
-    { label: 'Param.', value: 'parametrizado' },
-  ]
-  const fonteSwitches: { key: keyof FonteConfig; label: string }[] = [
-    { key: 'mp', label: 'Matéria-Prima' },
-    { key: 'renda', label: 'Renda' },
-    { key: 'embalagem', label: 'Embalagem' },
-    { key: 'energia', label: 'Energia' },
-  ]
 
   return (
     <div style={{ ...baseFont, flex: 1, width: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', gap: 10, position: 'relative', overflow: isMobile ? 'visible' : 'hidden' }}>
@@ -652,50 +628,8 @@ export default function SalesSimulator() {
 
         </div>
 
-        {/* ── Coluna direita: Fonte dos Custos + Preço Final ── */}
+        {/* ── Coluna direita: Preço Final ── */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0, overflow: isMobile ? 'visible' : 'hidden' }}>
-
-          {/* Fonte dos Custos */}
-          <div style={{ ...card }}>
-            <div style={{ ...cardHeader('#6366f1'), display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>Fonte dos Custos</span>
-              {tabela?.parametros_gerais && (
-                <span style={{ fontSize: 12, fontWeight: 400, color: '#818cf8' }}>
-                  Vigência: {tabela.parametros_gerais.data_vigencia}
-                </span>
-              )}
-            </div>
-            <div style={{ padding: '10px 14px' }}>
-              {!hasPg && (
-                <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'Inter, sans-serif', marginBottom: 8, fontStyle: 'italic' }}>
-                  Nenhum parâmetro de insumos cadastrado.
-                </div>
-              )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {fonteSwitches.map(({ key, label }) => {
-                  const isParam = fonte[key] === 'parametrizado'
-                  return (
-                    <div key={key} style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: '3px 6px', borderRadius: 6,
-                      background: isParam ? 'rgba(59,130,246,0.07)' : 'transparent',
-                      border: `1px solid ${isParam ? 'rgba(59,130,246,0.2)' : 'transparent'}`,
-                      transition: 'all 0.2s',
-                    }}>
-                      <span style={{ fontSize: 12, fontFamily: 'Inter, sans-serif', color: isParam ? '#1d4e89' : '#374151', fontWeight: isParam ? 600 : 500 }}>{label}</span>
-                      <Segmented
-                        size="small"
-                        value={fonte[key]}
-                        disabled={!hasPg}
-                        options={fonteOptions}
-                        onChange={v => handleFonteChange(key, v as Fonte)}
-                      />
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
 
           {/* Preço Final */}
           <div style={{ ...card, flex: 1, background: '#f0fdf4', border: '1px solid #bbf7d0', display: 'flex', flexDirection: 'column' }}>
