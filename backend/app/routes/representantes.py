@@ -102,6 +102,32 @@ def save_parametros(
     return {"salvos": count}
 
 
+@router.get("/parametros/ultima-vigencia")
+def get_ultima_vigencia_rep(
+    representante: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth_utils.get_current_user),
+):
+    """Retorna a vigência mais recente de um representante (qualquer mês)."""
+    registro = (
+        db.query(models.ParametroRepresentante)
+        .filter(models.ParametroRepresentante.representante == representante)
+        .order_by(models.ParametroRepresentante.data_vigencia.desc())
+        .first()
+    )
+    if not registro:
+        return None
+    return {
+        "data_vigencia": registro.data_vigencia.isoformat(),
+        "meta_frete_1": registro.meta_frete_1,
+        "meta_frete_2": registro.meta_frete_2,
+        "meta_frete_3": registro.meta_frete_3,
+        "margem_parbo": registro.margem_parbo,
+        "margem_branco": registro.margem_branco,
+        "margem_integral": registro.margem_integral,
+    }
+
+
 @router.delete("/parametros/{param_id}")
 def delete_parametro(
     param_id: int,

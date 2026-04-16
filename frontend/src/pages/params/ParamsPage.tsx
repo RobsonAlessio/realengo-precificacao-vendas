@@ -327,6 +327,29 @@ function RepresentantesParamsTab() {
     },
   ]
 
+  const [copyingLast, setCopyingLast] = useState(false)
+
+  async function copyFromLastVigencia() {
+    if (!selectedRep) return
+    setCopyingLast(true)
+    try {
+      const { data } = await api.get('/representantes/parametros/ultima-vigencia', { params: { representante: selectedRep } })
+      if (!data) { message.warning('Nenhuma vigência anterior encontrada para este representante.'); return }
+      const totalDias = diasDoMes(ano, mes)
+      const newDia = isViewingCurrentPeriod ? Math.min(todayDay, totalDias) : 1
+      setVigencias([{
+        key: buildKey(selectedRep, newDia, `copy_${Date.now()}`),
+        db_id: null, representante: selectedRep, dia: newDia,
+        meta_frete_1: data.meta_frete_1, meta_frete_2: data.meta_frete_2, meta_frete_3: data.meta_frete_3,
+        margem_parbo: data.margem_parbo, margem_branco: data.margem_branco, margem_integral: data.margem_integral,
+        isNew: true, isDirty: true,
+      }])
+      const srcDate = data.data_vigencia
+      message.success(`Valores copiados da vigência ${srcDate.split('-').reverse().join('/')}`)
+    } catch { message.error('Erro ao buscar última vigência') }
+    finally { setCopyingLast(false) }
+  }
+
   const repOptions = ativos.map(a => ({ value: a.fantasia, label: a.codigo != null ? `${a.codigo} - ${a.fantasia}` : a.fantasia }))
   const dirtyCount = vigencias.filter(v => v.isDirty).length
   const canAddVigencia = role === 'admin' || (role === 'editor' && !isViewingPastPeriod)
@@ -365,11 +388,18 @@ function RepresentantesParamsTab() {
               <Text strong style={{ color: '#1d4e89', fontSize: 16, fontFamily: 'Outfit, sans-serif' }}>{repOptions.find(o => o.value === selectedRep)?.label ?? selectedRep}</Text>
               <Text type="secondary" style={{ fontSize: 13 }}>— {MESES[mes - 1]} / {ano}</Text>
             </Space>}
-            extra={canAddVigencia ? <Button icon={<PlusOutlined />} onClick={addVigencia} size="small">Adicionar vigência</Button> : null}
+            extra={canAddVigencia ? (
+              <Space>
+                {vigencias.length === 0 && !loading && (
+                  <Button icon={<CopyOutlined />} onClick={copyFromLastVigencia} size="small" loading={copyingLast}>Copiar último mês</Button>
+                )}
+                <Button icon={<PlusOutlined />} onClick={addVigencia} size="small">Adicionar vigência</Button>
+              </Space>
+            ) : null}
           >
             <Table columns={cols} dataSource={vigencias} rowKey="key" size="small" pagination={false} bordered
               scroll={{ x: 'max-content', y: isMobile ? 'calc(100vh - 280px)' : 'calc(100vh - 380px)' }}
-              locale={{ emptyText: loading ? 'Carregando...' : canAddVigencia ? 'Nenhuma vigência cadastrada para este mês. Clique em "Adicionar vigência".' : 'Nenhuma vigência cadastrada para este mês.' }} />
+              locale={{ emptyText: loading ? 'Carregando...' : canAddVigencia ? 'Nenhuma vigência cadastrada para este mês. Clique em "Copiar último mês" ou "Adicionar vigência".' : 'Nenhuma vigência cadastrada para este mês.' }} />
           </Card>
         )}
       </Spin>
@@ -592,6 +622,32 @@ function ParametrosGeraisTab() {
     return { value: d, label: `Dia ${String(d).padStart(2, '0')}`, disabled: role !== 'admin' }
   })
 
+  const [copyingLast, setCopyingLast] = useState(false)
+
+  async function copyFromLastVigencia() {
+    setCopyingLast(true)
+    try {
+      const { data } = await api.get('/parametros-gerais/ultima-vigencia')
+      if (!data) { message.warning('Nenhuma vigência anterior encontrada.'); return }
+      const totalDias = diasDoMes(ano, mes)
+      const _today = new Date()
+      const isCurrent = ano === _today.getFullYear() && mes === _today.getMonth() + 1
+      const newDia = isCurrent ? Math.min(_today.getDate(), totalDias) : 1
+      setVigencias([{
+        key: buildKey('geral', newDia, `copy_${Date.now()}`),
+        db_id: null, dia: newDia,
+        mp_parbo_saco: data.mp_parbo_saco, mp_branco_saco: data.mp_branco_saco,
+        embalagem_parbo: data.embalagem_parbo, embalagem_branco: data.embalagem_branco,
+        energia_parbo: data.energia_parbo, energia_branco: data.energia_branco,
+        renda_parbo: data.renda_parbo, renda_branco: data.renda_branco,
+        isNew: true, isDirty: true,
+      }])
+      const srcDate = data.data_vigencia
+      message.success(`Valores copiados da vigência ${srcDate.split('-').reverse().join('/')}`)
+    } catch { message.error('Erro ao buscar última vigência') }
+    finally { setCopyingLast(false) }
+  }
+
   const dirtyCount = vigencias.filter(v => v.isDirty).length
   const canAdd = role === 'admin'
   const canSave = role === 'admin'
@@ -674,11 +730,18 @@ function ParametrosGeraisTab() {
             <Text strong style={{ color: '#1d4e89', fontSize: 16, fontFamily: 'Outfit, sans-serif' }}>Insumos</Text>
             <Text type="secondary" style={{ fontSize: 13 }}>— {MESES[mes - 1]} / {ano}</Text>
           </Space>}
-          extra={canAdd ? <Button icon={<PlusOutlined />} onClick={addVigencia} size="small">Adicionar vigência</Button> : null}
+          extra={canAdd ? (
+            <Space>
+              {vigencias.length === 0 && !loading && (
+                <Button icon={<CopyOutlined />} onClick={copyFromLastVigencia} size="small" loading={copyingLast}>Copiar último mês</Button>
+              )}
+              <Button icon={<PlusOutlined />} onClick={addVigencia} size="small">Adicionar vigência</Button>
+            </Space>
+          ) : null}
         >
           <Table columns={cols} dataSource={vigencias} rowKey="key" size="small" pagination={false} bordered
             scroll={{ x: 'max-content', y: isMobile ? 'calc(100vh - 240px)' : 'calc(100vh - 320px)' }}
-            locale={{ emptyText: loading ? 'Carregando...' : canAdd ? 'Nenhuma vigência cadastrada. Clique em "Adicionar vigência".' : 'Nenhuma vigência cadastrada para este mês.' }} />
+            locale={{ emptyText: loading ? 'Carregando...' : canAdd ? 'Nenhuma vigência cadastrada. Clique em "Copiar último mês" ou "Adicionar vigência".' : 'Nenhuma vigência cadastrada para este mês.' }} />
         </Card>
       </Spin>
     </div>

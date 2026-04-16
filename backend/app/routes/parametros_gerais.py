@@ -86,6 +86,32 @@ def upsert_parametros_gerais(
     return {"salvos": salvos}
 
 
+@router.get("/ultima-vigencia")
+def get_ultima_vigencia(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth_utils.get_current_user),
+):
+    """Retorna a vigência mais recente de parâmetros gerais (qualquer mês)."""
+    registro = (
+        db.query(models.ParametroGeral)
+        .order_by(models.ParametroGeral.data_vigencia.desc())
+        .first()
+    )
+    if not registro:
+        return None
+    return {
+        "data_vigencia": registro.data_vigencia.isoformat(),
+        "mp_parbo_saco": registro.mp_parbo_saco,
+        "mp_branco_saco": registro.mp_branco_saco,
+        "embalagem_parbo": registro.embalagem_parbo,
+        "embalagem_branco": registro.embalagem_branco,
+        "energia_parbo": registro.energia_parbo,
+        "energia_branco": registro.energia_branco,
+        "renda_parbo": registro.renda_parbo,
+        "renda_branco": registro.renda_branco,
+    }
+
+
 @router.delete("/{param_id}")
 def delete_parametro_geral(
     param_id: int,
