@@ -6,6 +6,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { Typography } from 'antd'
 import api from '../../api/client'
 import { useIsMobile } from '../../hooks/useIsMobile'
+import { useAuthStore } from '../../store/authStore'
 
 const { Text } = Typography
 
@@ -24,6 +25,9 @@ interface VarDef {
   label: string
   formato: 'numero' | 'percentual' | 'moeda'
   campo_sc?: string
+  somente_leitura?: boolean
+  campo_comissao?: string
+  nao_deduzir?: boolean
 }
 
 interface CalcDef {
@@ -102,15 +106,12 @@ function applyFonte(
   rendaRealizado: { parbo: number; branco: number } | null,
   mpSc: { parbo: number | null; branco: number | null } | null,
 ): Record<string, unknown>[] {
-  // Nenhuma fonte parametrizada ativa → retorna original
   const anyParam = Object.values(fonte).some(f => f === 'parametrizado')
   if (!anyParam) return dados
 
   return dados.map(row => {
     const r = { ...row }
 
-    // Determina renda efetiva por grupo
-    // Sem pg cadastrado + fonte parametrizada → null (força cadastro)
     const rendaParbo = fonte.renda === 'parametrizado'
       ? (pg?.renda_parbo ?? null)
       : (rendaRealizado?.parbo ?? 0.73)
@@ -118,7 +119,6 @@ function applyFonte(
       ? (pg?.renda_branco ?? null)
       : (rendaRealizado?.branco ?? 0.73)
 
-    // Determina MP efetiva por grupo (fardo)
     const calcMpFardo = (saco: number | null, renda: number | null) =>
       saco != null && renda != null ? saco * 30 / (renda * 50) : null
 
@@ -129,13 +129,11 @@ function applyFonte(
       const effRendaB = rendaBranco ?? (rendaRealizado?.branco ?? 0.73)
       const mpPFardo = calcMpFardo(mpPSaco, effRendaP)
       const mpBFardo = calcMpFardo(mpBSaco, effRendaB)
-      // Sem parâmetro → zera (não usa realizado como fallback)
       r['mp_parbo'] = mpPFardo; r['mp_integral'] = mpPFardo
       r['mp_branco'] = mpBFardo
       r['mp_parbo_sc'] = mpPSaco; r['mp_integral_sc'] = mpPSaco
       r['mp_branco_sc'] = mpBSaco
     } else if (fonte.renda === 'parametrizado' && rendaParbo != null) {
-      // MP realizado mas renda parametrizada → reconverte usando novo renda
       const mpPSc = mpSc?.parbo
       const mpBSc = mpSc?.branco
       if (mpPSc != null) { const v = calcMpFardo(mpPSc, rendaParbo); if (v != null) { r['mp_parbo'] = v; r['mp_integral'] = v } }
@@ -143,34 +141,52 @@ function applyFonte(
     }
 
     if (fonte.embalagem === 'parametrizado') {
-      // Sem parâmetro → zera
       r['embalagem_parbo'] = pg?.embalagem_parbo ?? null; r['embalagem_integral'] = pg?.embalagem_parbo ?? null
       r['embalagem_branco'] = pg?.embalagem_branco ?? null
     }
     if (fonte.energia === 'parametrizado') {
-      // Sem parâmetro → zera
       r['energia_parbo'] = pg?.energia_parbo ?? null; r['energia_integral'] = pg?.energia_parbo ?? null
       r['energia_branco'] = pg?.energia_branco ?? null
     }
 
-    // Recalcula preços para cada calc ativo
     for (const calc of calcAtivos) {
       if (!calc.variaveis?.length) continue
       const fixos = calc.variaveis.filter(v => v.formato !== 'percentual')
       const pcts  = calc.variaveis.filter(v => v.formato === 'percentual')
-      const somaFixos = fixos.reduce((acc, v) => acc + (Number(r[v.campo] ?? 0)), 0)
-      const somaPcts  = pcts.reduce((acc, v)  => acc + (Number(r[v.campo] ?? 0)), 0)
+      const comissaoVar = calc.variaveis.find(v => v.somente_leitura && v.campo_comissao)
+      const comissao = Number(r[comissaoVar?.campo_comissao ?? 'comissao'] ?? 0)
+      const somaPcts = pcts.filter(v => !v.nao_deduzir).reduce((acc, v) => acc + Number(r[v.campo] ?? 0), 0)
       const divisor = 1 - somaPcts
-      r[calc.id] = divisor > 0 ? somaFixos / divisor : 0
-      // f2 / f3
+      const somaFixosBase = fixos.filter(v => !v.somente_leitura).reduce((acc, v) => acc + Number(r[v.campo] ?? 0), 0)
+      const p1 = divisor > 0 ? somaFixosBase / divisor : 0
+      if (comissaoVar) {
+        const freteEmbutidoKey = comissaoVar.campo.replace('comissao_frete_', 'frete_embutido_')
+        const freteEmbutido = Number(r[freteEmbutidoKey] ?? 0)
+        const p2 = p1 - freteEmbutido
+        const p4 = (1 - comissao) > 0 ? p2 * comissao / (1 - comissao) : 0
+        r[comissaoVar.campo] = p4
+        r[calc.id] = p1 + p4
+      } else {
+        r[calc.id] = p1
+      }
       for (const suffix of ['_f2', '_f3']) {
         const freteKey = suffix === '_f2' ? 'meta_frete_2' : 'meta_frete_3'
         if (row[freteKey] != null) {
-          const somaF = fixos.reduce((acc, v) => {
+          const somaF = fixos.filter(v => !v.somente_leitura).reduce((acc, v) => {
             const val = v.campo === 'meta_frete' ? Number(row[freteKey] ?? 0) : Number(r[v.campo] ?? 0)
             return acc + val
           }, 0)
-          r[calc.id + suffix] = divisor > 0 ? somaF / divisor : 0
+          const p1f = divisor > 0 ? somaF / divisor : 0
+          if (comissaoVar) {
+            const freteEmbutidoKey = comissaoVar.campo.replace('comissao_frete_', 'frete_embutido_')
+            const freteEmbutido = Number(r[freteEmbutidoKey] ?? 0)
+            const p2f = p1f - freteEmbutido
+            const p4f = (1 - comissao) > 0 ? p2f * comissao / (1 - comissao) : 0
+            r[comissaoVar.campo + suffix] = p4f
+            r[calc.id + suffix] = p1f + p4f
+          } else {
+            r[calc.id + suffix] = p1f
+          }
         }
       }
     }
@@ -213,6 +229,7 @@ function renderPopoverContent(
   calc: CalcDef,
   rec: Record<string, unknown>,
   preco: unknown,
+  isAdmin?: boolean,
   title?: string,
 ) {
   if (!calc.variaveis?.length) return null
@@ -220,11 +237,25 @@ function renderPopoverContent(
   const color = gs?.calcColor ?? '#27ae60'
   const fixos = calc.variaveis.filter(v => v.formato !== 'percentual')
   const pcts  = calc.variaveis.filter(v => v.formato === 'percentual')
+  const comissaoFreteVar = fixos.find(v => v.somente_leitura && v.campo_comissao)
+  const comissaoPct = Number(rec[comissaoFreteVar?.campo_comissao ?? 'comissao'] ?? 0)
+  const comissaoFreteVal = comissaoFreteVar ? Number(rec[comissaoFreteVar.campo] ?? 0) : 0
+  const pctComissaoEfetiva = Number(preco ?? 0) > 0 && comissaoFreteVal > 0
+    ? comissaoFreteVal / Number(preco) : 0
   const somaFixos = fixos.reduce((acc, v) => acc + (Number(rec[v.campo] ?? 0)), 0)
-  const somaPcts  = pcts.reduce((acc, v) => acc + (Number(rec[v.campo] ?? 0)), 0)
+  const somaPcts  = pcts.filter(v => !v.nao_deduzir).reduce((acc, v) => acc + (Number(rec[v.campo] ?? 0)), 0)
   const divisor   = 1 - somaPcts
+  const somaFixosBase = fixos.filter(v => !v.somente_leitura).reduce((acc, v) => acc + (Number(rec[v.campo] ?? 0)), 0)
+  const p1 = divisor > 0 ? somaFixosBase / divisor : 0
+
+  const freteEmbutidoKey = comissaoFreteVar?.campo?.replace('comissao_frete_', 'frete_embutido_') ?? ''
+  const freteEmbutido = Number(rec[freteEmbutidoKey] ?? 0)
+  const p2 = p1 - freteEmbutido
+  const p3 = (1 - comissaoPct) > 0 ? p2 / (1 - comissaoPct) : 0
+  const p4 = p3 - p2
+
   return (
-    <div style={{ minWidth: 240, fontSize: 13 }}>
+    <div style={{ minWidth: 280, fontSize: 13 }}>
       {title && <div style={{ fontWeight: 600, color, marginBottom: 6 }}>{title}</div>}
       <Text strong style={{ color }}>Custos fixos (R$/fardo)</Text>
       <table style={{ width: '100%', marginTop: 4 }}>
@@ -235,14 +266,21 @@ function renderPopoverContent(
             const renda = fardo > 0 && saco > 0 ? (saco * 30) / (fardo * 50) : null
             return (
               <tr key={v.campo}>
-                <td style={{ paddingRight: 12, color: '#555' }}>{v.label}</td>
-                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                  {fmt(rec[v.campo], v.formato)}
-                  {v.campo_sc && rec[v.campo_sc] != null && (
-                    <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>
-                      ({fmt(rec[v.campo_sc], 'moeda')}/sc{renda != null ? ` · renda: ${(renda * 100).toFixed(1)}%` : ''})
+                <td style={{ paddingRight: 12, color: '#555' }}>
+                  {v.label}
+                  {v.somente_leitura && v.campo_comissao && (
+                    <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
+                      ({(comissaoPct * 100).toFixed(2)}% | {(pctComissaoEfetiva * 100).toFixed(2)}%)
                     </Text>
                   )}
+                  {v.campo_sc && (
+                    <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
+                      ({fmt(rec[v.campo_sc], 'moeda')}/sc{renda != null ? ` | renda: ${(renda * 100).toFixed(1)}%` : ''})
+                    </Text>
+                  )}
+                </td>
+                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                  {fmt(rec[v.campo], v.formato)}
                 </td>
               </tr>
             )
@@ -259,7 +297,12 @@ function renderPopoverContent(
         <tbody>
           {pcts.map(v => (
             <tr key={v.campo}>
-              <td style={{ paddingRight: 12, color: '#555' }}>{v.label}</td>
+              <td style={{ paddingRight: 12, color: '#555' }}>
+                {v.label}
+                {v.nao_deduzir && (
+                  <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>(afeta Comissão Líquida)</Text>
+                )}
+              </td>
               <td style={{ textAlign: 'right' }}>{fmt(rec[v.campo], 'percentual')}</td>
             </tr>
           ))}
@@ -271,19 +314,36 @@ function renderPopoverContent(
       </table>
       <Divider style={{ margin: '8px 0' }} />
       <div style={{ textAlign: 'right' }}>
-        <Text type="secondary" style={{ fontSize: 11 }}>{fmt(somaFixos, 'moeda')} ÷ {divisor.toFixed(4)} =&nbsp;</Text>
+        <Text type="secondary" style={{ fontSize: 11 }}>
+          {fmt(p1, 'moeda')} + {fmt(comissaoFreteVal, 'moeda')} =&nbsp;
+        </Text>
         <Text strong style={{ color, fontSize: 14 }}>{fmt(preco, 'moeda')}</Text>
       </div>
+      {isAdmin && comissaoFreteVar && (
+        <div style={{
+          marginTop: 6, padding: '6px 8px',
+          background: 'rgba(0,0,0,0.03)', border: '1px solid rgba(0,0,0,0.06)',
+          borderRadius: 6, fontSize: 11, fontFamily: 'Inter, sans-serif',
+          color: '#555', lineHeight: 1.7,
+        }}>
+          <div style={{ fontWeight: 600, color: '#1e293b' }}>Memória de Cálculo</div>
+          <div>P1 = {fmt(somaFixosBase, 'moeda')} ÷ {divisor.toFixed(4)} = {fmt(p1, 'moeda')}</div>
+          <div>P2 = {fmt(p1, 'moeda')} − {fmt(freteEmbutido, 'moeda')} = {fmt(p2, 'moeda')}</div>
+          <div>P3 = {fmt(p2, 'moeda')} ÷ {(1 - comissaoPct).toFixed(4)} = {fmt(p3, 'moeda')}</div>
+          <div>Comissão Líq. = {fmt(p3, 'moeda')} − {fmt(p2, 'moeda')} = {fmt(p4, 'moeda')}</div>
+        </div>
+      )}
     </div>
   )
 }
 
 // ── card mobile ──────────────────────────────────────────────────────────────
 
-function MobilePriceCard({ row, calcAtivos, dados }: {
+function MobilePriceCard({ row, calcAtivos, dados, isAdmin }: {
   row: Record<string, unknown>
   calcAtivos: CalcDef[]
   dados: Record<string, unknown>[]
+  isAdmin: boolean
 }) {
   const calcGrupos: Record<string, CalcDef[]> = {}
   for (const c of calcAtivos) {
@@ -341,7 +401,7 @@ function MobilePriceCard({ row, calcAtivos, dados }: {
                       const val = row[fc.key]
                       if (val == null) return null
                       const rec = fc.metaKey ? { ...row, meta_frete: row[fc.metaKey] } : row
-                      const popoverContent = renderPopoverContent(calc, rec, val, `${grupo ?? calc.label} — ${fc.label}`)
+                      const popoverContent = renderPopoverContent(calc, rec, val, isAdmin, `${grupo ?? calc.label} — ${fc.label}`)
                       return (
                         <div key={fc.key} style={{
                           display: 'flex',
@@ -382,6 +442,7 @@ function buildColumns(
   colDefs: ColDef[],
   calcAtivos: CalcDef[],
   dados: Record<string, unknown>[],
+  isAdmin: boolean = false,
 ): ColumnsType<Record<string, unknown>> {
   const temF2 = dados?.some(r => r['meta_frete_2'] != null) ?? false
   const temF3 = dados?.some(r => r['meta_frete_3'] != null) ?? false
@@ -434,7 +495,7 @@ function buildColumns(
     const color = gs?.calcColor ?? '#27ae60'
 
     const renderPopover = (rec: Record<string, unknown>, preco: unknown, title?: string) => {
-      return renderPopoverContent(calc, rec, preco, title)
+      return renderPopoverContent(calc, rec, preco, isAdmin, title)
     }
 
     const makeSubCol = (freteLabel: string, dataIdx: string, metaFreteKey: string | null) => ({
@@ -495,6 +556,7 @@ export default function PriceTable() {
   const [loading, setLoading] = useState(false)
   const [error, setError]   = useState<string | null>(null)
   const isMobile = useIsMobile()
+  const isAdmin = useAuthStore(s => s.user?.role === 'admin')
   const [badgesExpanded, setBadgesExpanded] = useState(false)
   const [mobileRepFilter, setMobileRepFilter] = useState<string | null>(null)
 
@@ -526,7 +588,7 @@ export default function PriceTable() {
     return applyFonte(tabela.dados, tabela.calculos_ativos, fonte, tabela.parametros_gerais ?? null, rendaRealizado, mpSc)
   }, [tabela, fonte])
 
-  const columns  = tabela ? buildColumns(tabela.colunas, tabela.calculos_ativos, transformedData) : []
+  const columns  = tabela ? buildColumns(tabela.colunas, tabela.calculos_ativos, transformedData, isAdmin) : []
   const avisoMp  = tabela?.custo_mp?.aviso ?? null
   const avisoProd = tabela?.custo_producao?.aviso ?? null
   const semDados = tabela !== null && tabela?.dados?.length === 0
@@ -693,6 +755,7 @@ export default function PriceTable() {
                 row={row}
                 calcAtivos={tabela?.calculos_ativos ?? []}
                 dados={transformedData}
+                isAdmin={isAdmin}
               />
             ))}
           </div>

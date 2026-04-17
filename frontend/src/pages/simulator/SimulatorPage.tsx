@@ -3,9 +3,10 @@ import { Select, Radio, InputNumber, Spin, Tooltip } from 'antd'
 import { SwapOutlined, InfoCircleOutlined } from '@ant-design/icons'
 import api from '../../api/client'
 import { useIsMobile } from '../../hooks/useIsMobile'
+import { useAuthStore } from '../../store/authStore'
 
 // ── tipos ────────────────────────────────────────────────────────────────────
-interface VarDef { campo: string; label: string; formato: 'numero' | 'percentual' | 'moeda' }
+interface VarDef { campo: string; label: string; formato: 'numero' | 'percentual' | 'moeda'; campo_sc?: string; somente_leitura?: boolean; campo_comissao?: string; nao_deduzir?: boolean }
 interface CalcDef { id: string; label: string; formula: string; formato: 'numero' | 'percentual' | 'moeda'; grupo: string | null; ativo: boolean; variaveis?: VarDef[] }
 interface ParametrosGerais {
   data_vigencia: string
@@ -178,6 +179,7 @@ export default function SalesSimulator() {
   const [deducaoAdicional, setDeducaoAdicional] = useState<number>(0)
   const [manualFinalPrice, setManualFinalPrice] = useState<number | null>(null)
   const isMobile = useIsMobile()
+  const isAdmin = useAuthStore(s => s.user?.role === 'admin')
 
   const fonte = tabela?.fonte_config ?? FONTE_DEFAULT
 
@@ -198,6 +200,17 @@ export default function SalesSimulator() {
 
   const comissaoByRep = useMemo(() => { const m: Record<string, number> = {}; ativos.forEach(a => { if (a.comissao != null) m[a.fantasia] = a.comissao }); return m }, [ativos])
   const impostoByRep = useMemo(() => { const m: Record<string, number> = {}; ativos.forEach(a => { if (a.imposto != null) m[a.fantasia] = a.imposto }); return m }, [ativos])
+  const freteEmbutidoByRep = useMemo(() => {
+    const m: Record<string, { parbo: number; branco: number }> = {}
+    if (!tabela) return m
+    for (const d of tabela.dados) {
+      const nome = String(d.representante ?? '')
+      const p = Number(d.frete_embutido_parbo ?? d.frete_embutido_integral ?? 0)
+      const b = Number(d.frete_embutido_branco ?? 0)
+      if (p || b) m[nome] = { parbo: p, branco: b }
+    }
+    return m
+  }, [tabela])
 
   const globalCosts = useMemo((): Record<string, any> => {
     if (!tabela) return {}
@@ -209,6 +222,7 @@ export default function SalesSimulator() {
     if (!calcDef || !tabela) return
     const nv: Record<string, number> = {}
     calcDef.variaveis?.forEach(v => {
+      if (v.somente_leitura) return
       let val = 0
       if (repData) { val = Number(repData[v.campo]) }
       else {
@@ -255,21 +269,73 @@ export default function SalesSimulator() {
     setFormValues(nv); setInitialValues(nv); setManualFinalPrice(null); setCustoAdicional(0); setDeducaoAdicional(0)
   }, [selectedRep, calcDef, repData, tabela, globalCosts, comissaoByRep, impostoByRep])
 
-  const { somaFixos, somaPcts } = useMemo(() => {
-    let f = custoAdicional || 0, p = deducaoAdicional || 0
-    calcDef?.variaveis?.forEach(v => { const val = formValues[v.campo] || 0; if (v.formato === 'percentual') p += val; else f += val })
-    return { somaFixos: f, somaPcts: p }
-  }, [calcDef, formValues, custoAdicional, deducaoAdicional])
+  const comissaoFreteVar = calcDef?.variaveis?.find(v => v.somente_leitura && v.campo_comissao)
+  const comissaoKey = comissaoFreteVar?.campo_comissao ?? 'comissao'
+
+  const comissaoFreteVal = useMemo(() => {
+    if (!comissaoFreteVar) return 0
+    const comissao = Number(formValues[comissaoKey] ?? 0)
+    const freteEmbutidoKey = comissaoFreteVar.campo.replace('comissao_frete_', 'frete_embutido_')
+    let freteEmbutido = 0
+    if (repData) freteEmbutido = Number(repData[freteEmbutidoKey] ?? 0)
+    else if (selectedRep && freteEmbutidoByRep[selectedRep]) {
+      const isBranco = calcDef?.grupo?.toLowerCase() === 'branco'
+      freteEmbutido = isBranco ? freteEmbutidoByRep[selectedRep].branco : freteEmbutidoByRep[selectedRep].parbo
+    }
+    const fixosBase = calcDef?.variaveis
+      ?.filter(v => v.formato !== 'percentual' && !v.somente_leitura)
+      .reduce((acc, v) => acc + Number(formValues[v.campo] ?? 0), 0) ?? 0
+    const pcts = calcDef?.variaveis
+      ?.filter(v => v.formato === 'percentual' && !v.nao_deduzir)
+      .reduce((acc, v) => acc + Number(formValues[v.campo] ?? 0), 0) ?? 0
+    const divisor = 1 - pcts
+    const p1 = divisor > 0 ? (fixosBase + custoAdicional) / divisor : 0
+    const p2 = p1 - freteEmbutido
+    return (1 - comissao) > 0 ? p2 * comissao / (1 - comissao) : 0
+  }, [calcDef, formValues, custoAdicional, comissaoFreteVar, comissaoKey, repData, selectedRep, freteEmbutidoByRep])
+
+  const { somaFixos, somaPcts, fixosBaseSemComissao } = useMemo(() => {
+    let f = custoAdicional || 0, p = deducaoAdicional || 0, fb = 0
+    calcDef?.variaveis?.forEach(v => {
+      if (v.somente_leitura) return
+      const val = formValues[v.campo] || 0
+      if (v.formato === 'percentual') { if (!v.nao_deduzir) p += val } else { f += val; fb += val }
+    })
+    f += comissaoFreteVal
+    return { somaFixos: f, somaPcts: p, fixosBaseSemComissao: fb }
+  }, [calcDef, formValues, custoAdicional, deducaoAdicional, comissaoFreteVal])
 
   const divisor = 1 - somaPcts
-  const calculatedPrice = useMemo(() => divisor <= 0 ? 0 : somaFixos / divisor, [somaFixos, divisor])
+  const p1 = divisor > 0 ? (fixosBaseSemComissao + custoAdicional) / divisor : 0
+  const calculatedPrice = useMemo(() => p1 + comissaoFreteVal, [p1, comissaoFreteVal])
   const finalPrice = manualFinalPrice !== null ? manualFinalPrice : calculatedPrice
+
+  const calcMemory = useMemo(() => {
+    const comissao = Number(formValues[comissaoKey] ?? 0)
+    const freteEmbutidoKey = comissaoFreteVar?.campo?.replace('comissao_frete_', 'frete_embutido_') ?? ''
+    let freteEmbutido = 0
+    if (repData) freteEmbutido = Number(repData[freteEmbutidoKey] ?? 0)
+    else if (selectedRep && freteEmbutidoByRep[selectedRep]) {
+      const isBranco = calcDef?.grupo?.toLowerCase() === 'branco'
+      freteEmbutido = isBranco ? freteEmbutidoByRep[selectedRep].branco : freteEmbutidoByRep[selectedRep].parbo
+    }
+    const p2 = p1 - freteEmbutido
+    const p3 = (1 - comissao) > 0 ? p2 / (1 - comissao) : 0
+    const p4 = p3 - p2
+    const pctEfetiva = finalPrice > 0 && p4 > 0 ? p4 / finalPrice : 0
+    return { p1, p2, p3, p4, freteEmbutido, comissao, pctEfetiva }
+  }, [p1, formValues, comissaoKey, comissaoFreteVar, repData, selectedRep, freteEmbutidoByRep, calcDef, finalPrice])
 
   const handleValueChange = (campo: string, val: number | null) => { setFormValues(p => ({ ...p, [campo]: val || 0 })); setManualFinalPrice(null) }
   const handleFinalPriceChange = (val: number | null) => {
     if (!val || !margemKey) return
-    const margemAtual = formValues[margemKey] || 0; const outrosPcts = somaPcts - margemAtual
-    setManualFinalPrice(val); setFormValues(p => ({ ...p, [margemKey]: 1 - (somaFixos / val) - outrosPcts }))
+    const comissaoFrete = comissaoFreteVal
+    const fixosBase = fixosBaseSemComissao
+    const outrosPcts = deducaoAdicional || 0
+    const imposto = Number(formValues['imposto'] ?? 0)
+    const somaOutrosPcts = outrosPcts + imposto
+    const margemCalculada = 1 - ((fixosBase + custoAdicional + comissaoFrete) / val) - somaOutrosPcts
+    setManualFinalPrice(val); setFormValues(p => ({ ...p, [margemKey]: margemCalculada }))
   }
 
   const reps = useMemo(() => {
@@ -282,14 +348,14 @@ export default function SalesSimulator() {
   const embalagemVar = calcDef?.variaveis?.find(v => v.campo.startsWith('embalagem_'))
   const energiaVar = calcDef?.variaveis?.find(v => v.campo.startsWith('energia_'))
   const freteVar = calcDef?.variaveis?.find(v => v.campo === 'meta_frete')
-  const comissaoVar = calcDef?.variaveis?.find(v => v.campo === 'comissao')
+  const comissaoVar = calcDef?.variaveis?.find(v => v.campo === 'comissao' && v.nao_deduzir)
   const impostoVar = calcDef?.variaveis?.find(v => v.campo === 'imposto')
   const margemVar = calcDef?.variaveis?.find(v => v.campo === margemKey)
 
   const fixosAlocados = new Set(['mp_parbo', 'mp_branco', 'mp_integral', 'embalagem_parbo', 'embalagem_branco', 'embalagem_integral', 'energia_parbo', 'energia_branco', 'energia_integral', 'meta_frete'])
   const pctAlocados = new Set(['comissao', 'imposto', margemKey])
 
-  const varsFixaisExtras = calcDef?.variaveis?.filter(v => v.formato !== 'percentual' && !fixosAlocados.has(v.campo)) || []
+  const varsFixosExtras = calcDef?.variaveis?.filter(v => v.formato !== 'percentual' && !v.somente_leitura && !fixosAlocados.has(v.campo)) || []
   const varsPctsExtras = calcDef?.variaveis?.filter(v => v.formato === 'percentual' && !pctAlocados.has(v.campo)) || []
 
   // Sufixo do grupo para parametros_gerais (integral usa parbo)
@@ -418,9 +484,9 @@ export default function SalesSimulator() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0, overflow: isMobile ? 'visible' : 'hidden' }}>
 
           {/* Custos Fixos */}
-          <div style={{ ...card, flex: isMobile ? 'none' : 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <div style={{ ...card, flex: isMobile ? 'none' : '1 1 auto', display: 'flex', flexDirection: 'column', minWidth: 0, overflow: isMobile ? 'visible' : 'hidden' }}>
             <div style={cardHeader('#1d4e89')}>Custos Fixos (Numerador)</div>
-            <div style={{ padding: '10px 14px', flex: isMobile ? 'none' : 1, display: 'flex', flexDirection: 'column', overflow: isMobile ? 'visible' : 'auto' }}>
+            <div style={{ padding: '10px 14px', flex: isMobile ? 'none' : '1 1 auto', display: 'flex', flexDirection: 'column', overflow: isMobile ? 'visible' : 'auto' }}>
 
               {/* MP: Saco 50kg (editável) | Fardo 30kg (resultado) */}
               {mpVar && (
@@ -476,7 +542,7 @@ export default function SalesSimulator() {
                 </FieldRow>
               )}
 
-              {/* Frete | Custos Adicionais */}
+              {/* Frete | Comissão Frete */}
               <FieldRow>
                 {freteVar ? (
                   <div style={{ flex: 1 }}>
@@ -500,7 +566,27 @@ export default function SalesSimulator() {
                     <InputNumber prefix="R$" style={inputStyle} value={formValues[freteVar.campo] || 0} onChange={v => handleValueChange(freteVar.campo, v)} precision={2} decimalSeparator="," step={0.1} />
                   </div>
                 ) : <div style={{ flex: 1 }} />}
-                <div style={{ flex: 1 }}>
+                {comissaoFreteVar ? (
+                  <ReadonlyValue
+                    label={`Comissão Líquida (${(Number(formValues[comissaoKey] ?? 0) * 100).toFixed(2)}% | ${finalPrice > 0 && comissaoFreteVal > 0 ? ((comissaoFreteVal / finalPrice) * 100).toFixed(2) : '0.00'}%)`}
+                    value={fmt(comissaoFreteVal)}
+                  />
+                ) : (
+                  <div style={{ flex: 1 }}>
+                    <span style={subLabel}>
+                      Custos Adicionais&nbsp;
+                      <Tooltip title="Fretes extras, bonificações ou outros custos fixos (R$)">
+                        <InfoCircleOutlined style={{ fontSize: 12, color: '#94a3b8', cursor: 'default' }} />
+                      </Tooltip>
+                    </span>
+                    <InputNumber prefix="R$" style={inputStyle} value={custoAdicional || 0} onChange={v => { setCustoAdicional(v || 0); setManualFinalPrice(null) }} precision={2} decimalSeparator="," step={0.5} />
+                  </div>
+                )}
+              </FieldRow>
+
+              {/* Custos Adicionais */}
+              {comissaoFreteVar && (
+                <div style={{ marginBottom: 8 }}>
                   <span style={subLabel}>
                     Custos Adicionais&nbsp;
                     <Tooltip title="Fretes extras, bonificações ou outros custos fixos (R$)">
@@ -509,10 +595,10 @@ export default function SalesSimulator() {
                   </span>
                   <InputNumber prefix="R$" style={inputStyle} value={custoAdicional || 0} onChange={v => { setCustoAdicional(v || 0); setManualFinalPrice(null) }} precision={2} decimalSeparator="," step={0.5} />
                 </div>
-              </FieldRow>
+              )}
 
               {/* Extras não alocados */}
-              {varsFixaisExtras.map(v => (
+              {varsFixosExtras.map(v => (
                 <div key={v.campo} style={{ marginBottom: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={subLabel}>{v.label}</span>
@@ -531,35 +617,33 @@ export default function SalesSimulator() {
           </div>
 
           {/* Deduções */}
-          <div style={{ ...card, flex: isMobile ? 'none' : 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <div style={{ ...card, flex: isMobile ? 'none' : '0 0 auto', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             <div style={cardHeader('#d4380d')}>Deduções (Denominador)</div>
-            <div style={{ padding: '10px 14px', flex: isMobile ? 'none' : 1, display: 'flex', flexDirection: 'column', overflow: isMobile ? 'visible' : 'auto' }}>
+            <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', overflow: isMobile ? 'visible' : 'visible' }}>
 
-              {/* Comissão | Imposto */}
-              {(comissaoVar || impostoVar) && (
-                <FieldRow>
-                  {comissaoVar && (
-                    <PctField
-                      label={comissaoVar.label}
-                      value={formValues[comissaoVar.campo] || 0}
-                      onChange={v => handleValueChange(comissaoVar.campo, v)}
-                      refValue={initialValues[comissaoVar.campo]}
-                      onRefClick={() => handleValueChange(comissaoVar.campo, initialValues[comissaoVar.campo])}
-                    />
-                  )}
-                  {impostoVar && (
-                    <PctField
-                      label={impostoVar.label}
-                      value={formValues[impostoVar.campo] || 0}
-                      onChange={v => handleValueChange(impostoVar.campo, v)}
-                      refValue={initialValues[impostoVar.campo]}
-                      onRefClick={() => handleValueChange(impostoVar.campo, initialValues[impostoVar.campo])}
-                    />
-                  )}
-                </FieldRow>
-              )}
+              {/* % Comissão | Imposto */}
+              <FieldRow>
+                {comissaoVar && (
+                  <PctField
+                    label="% Comissão"
+                    value={formValues[comissaoVar.campo] || 0}
+                    onChange={v => handleValueChange(comissaoVar.campo, v)}
+                    refValue={initialValues[comissaoVar.campo]}
+                    onRefClick={() => handleValueChange(comissaoVar.campo, initialValues[comissaoVar.campo])}
+                  />
+                )}
+                {impostoVar && (
+                  <PctField
+                    label={impostoVar.label}
+                    value={formValues[impostoVar.campo] || 0}
+                    onChange={v => handleValueChange(impostoVar.campo, v)}
+                    refValue={initialValues[impostoVar.campo]}
+                    onRefClick={() => handleValueChange(impostoVar.campo, initialValues[impostoVar.campo])}
+                  />
+                )}
+              </FieldRow>
 
-              {/* Margem + % Adicional */}
+              {/* Margem | % Adicional */}
               <FieldRow>
                 {margemVar && (
                   <div style={{ flex: 1 }}>
@@ -580,8 +664,6 @@ export default function SalesSimulator() {
                     <InputNumber addonAfter="%" style={inputStyle} value={Number(((formValues[margemVar.campo] || 0) * 100).toFixed(2))} onChange={v => handleValueChange(margemVar.campo, (v || 0) / 100)} precision={2} decimalSeparator="," step={1} status={manualFinalPrice ? 'warning' : ''} />
                   </div>
                 )}
-
-                {/* % Adicional */}
                 <div style={{ flex: 1 }}>
                   <span style={subLabel}>
                     % Adicional&nbsp;
@@ -601,7 +683,7 @@ export default function SalesSimulator() {
                 </div>
               </FieldRow>
 
-              {/* Extras */}
+                {/* Extras */}
               {varsPctsExtras.map(v => (
                 <div key={v.campo} style={{ marginBottom: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -652,6 +734,25 @@ export default function SalesSimulator() {
                 <InfoCircleOutlined style={{ marginRight: 4 }} />
                 Altere para calcular a <strong style={{ color: '#1d4e89' }}>Margem</strong> resultante
               </span>
+
+              {/* Memória de cálculo (somente admin) */}
+              {isAdmin && comissaoFreteVar && (
+                <div style={{
+                  marginTop: 8, width: '100%', padding: '8px 10px',
+                  background: 'rgba(22,101,52,0.06)', border: '1px solid rgba(22,101,52,0.15)',
+                  borderRadius: 8, fontSize: 11, fontFamily: 'Inter, sans-serif',
+                  color: '#374151', lineHeight: 1.8,
+                }}>
+                  <div style={{ fontWeight: 600, marginBottom: 2, color: '#166534' }}>Memória de Cálculo</div>
+                  <div>P1 = Fixos ÷ Divisor = {fmt(fixosBaseSemComissao + custoAdicional)} ÷ {divisor.toFixed(4)} = <strong>{fmt(p1)}</strong></div>
+                  <div>P2 = P1 − Frete Embutido = {fmt(p1)} − {fmt(calcMemory.freteEmbutido)} = <strong>{fmt(calcMemory.p2)}</strong></div>
+                  <div>P3 = P2 ÷ (1 − % Comissão) = {fmt(calcMemory.p2)} ÷ {(1 - calcMemory.comissao).toFixed(4)} = <strong>{fmt(calcMemory.p3)}</strong></div>
+                  <div>Comissão Líquida = P3 − P2 = {fmt(calcMemory.p3)} − {fmt(calcMemory.p2)} = <strong>{fmt(calcMemory.p4)}</strong> ({(calcMemory.comissao * 100).toFixed(2)}% | {(calcMemory.pctEfetiva * 100).toFixed(2)}%)</div>
+                  <div style={{ borderTop: '1px solid rgba(22,101,52,0.15)', marginTop: 4, paddingTop: 4 }}>
+                    Preço = P1 + Comissão Líq. = {fmt(p1)} + {fmt(calcMemory.p4)} = <strong style={{ color: '#166534' }}>{fmt(finalPrice)}</strong>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

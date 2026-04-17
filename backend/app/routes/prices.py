@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import extract
 from app import models, auth as auth_utils
 from app.database import get_db
-from app.services.excel_reader import get_custo_mp, get_comissoes
+from app.services.excel_reader import get_custo_mp, get_comissoes, get_frete_embutido
 from app.services.config_reader import load_config, apply_calculos
 from app.services.parquet_reader import get_custo_producao as _get_custo_producao
 from app.services import representantes_service
@@ -93,6 +93,7 @@ def tabela(
     rows, mes_ref = _montar_rows_do_bd(db)
     mp = get_custo_mp()
     custo_prod = _get_custo_producao()
+    frete_emb = get_frete_embutido()
 
     # Período de referência dos impostos (3 meses anteriores ao mês atual)
     hoje = date.today()
@@ -132,6 +133,12 @@ def tabela(
         row["energia_branco"]     = ene_br
         row["embalagem_integral"] = emb_pi
         row["energia_integral"]   = ene_pi
+
+        cod_rep = str(row.get("codigo_representante", ""))
+        emb_rep = frete_emb.get(cod_rep, {})
+        row["frete_embutido_parbo"]    = emb_rep.get("8", 0.0)
+        row["frete_embutido_integral"] = emb_rep.get("8", 0.0)
+        row["frete_embutido_branco"]   = emb_rep.get("58", 0.0)
 
     rows = apply_calculos(rows, mp, config)
 

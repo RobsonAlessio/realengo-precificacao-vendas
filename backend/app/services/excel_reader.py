@@ -51,6 +51,11 @@ _RENDA_AJUSTE        = 0.02 # Desconto operacional sobre a média bruta (Avg - 0
 _KG_SACO = 50
 _KG_FARDO = 30
 
+PARQUET_PATH_FRETE_EMBUTIDO = os.getenv(
+    "PARQUET_PATH_FRETE_EMBUTIDO",
+    f"{_QLIK_BRONZE}/extracao_cache/fat_vlfretequilorep/fat_vlfretequilorep.parquet",
+)
+
 
 def _safe_float(val):
     if val is None:
@@ -206,6 +211,30 @@ def get_renda_processo(ano: int, mes: int) -> dict[str, float]:
         "mes_referencia":  f"{ref_ano}-{ref_mes:02d}",
         "aviso":           aviso_fallback,
     }
+
+
+def get_frete_embutido() -> dict[str, dict[str, float]]:
+    """
+    Retorna {codRepresentante_str: {empresa: R$/fardo}} lido de fat_vlfretequilorep.parquet.
+    Empresa 8 = Parbo/Integral, Empresa 58 = Branco.
+    Valor no parquet é R$/kg → converte para R$/fardo multiplicando por 30.
+    """
+    if not os.path.exists(PARQUET_PATH_FRETE_EMBUTIDO):
+        return {}
+    df = pd.read_parquet(PARQUET_PATH_FRETE_EMBUTIDO, engine="pyarrow")
+    if df.empty:
+        return {}
+    result: dict[str, dict[str, float]] = {}
+    for _, row in df.iterrows():
+        cod = str(int(row["codRepresentante"]))
+        emp = int(row["codEmpresa"])
+        val_kg = _safe_float(row.get("valor"))
+        if val_kg is None:
+            continue
+        if cod not in result:
+            result[cod] = {}
+        result[cod][str(emp)] = round(val_kg * _KG_FARDO, 4)
+    return result
 
 
 def _mp_sc_para_fardo(val_sc: float | None, renda: float | None) -> float | None:
