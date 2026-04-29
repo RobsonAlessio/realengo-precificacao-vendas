@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Table, Button, Select, Space, Typography, Spin, Tag, Alert,
-  InputNumber, Popconfirm, message, Card, Tooltip, Tabs, Segmented,
+  InputNumber, Popconfirm, message, Card, Tooltip, Tabs, Segmented, Modal,
 } from 'antd'
 import {
   SaveOutlined, ReloadOutlined, PlusOutlined, DeleteOutlined,
-  CopyOutlined,
+  CopyOutlined, UserSwitchOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import api from '../../api/client'
@@ -60,6 +60,25 @@ interface ApiRepresentante {
 interface ApiResponse {
   mes: string
   representantes: ApiRepresentante[]
+}
+
+interface CopiarPreviewItem {
+  representante: string
+  codigo_representante: number | null
+  ultima_vigencia_data: string
+  meta_frete_1: number | null
+  meta_frete_2: number | null
+  meta_frete_3: number | null
+  margem_parbo: number | null
+  margem_branco: number | null
+  margem_integral: number | null
+  tem_registro_mes: boolean
+}
+
+interface CopiarPreviewResponse {
+  ano: number
+  mes: number
+  preview: CopiarPreviewItem[]
 }
 
 // ── Tipos — Parâmetros Gerais ─────────────────────────────────────────────────
@@ -236,26 +255,29 @@ function RepresentantesParamsTab() {
     }])
   }
 
-  function replicarParaDiasSeguintes(row: VigenciaRow) {
+  function replicarParaDiaSeguinte(row: VigenciaRow) {
     const totalDias = diasDoMes(ano, mes)
-    const diasSeguintes = Array.from({ length: totalDias - row.dia }, (_, i) => row.dia + i + 1)
-    if (diasSeguintes.length === 0) { message.info('Não há dias seguintes neste mês.'); return }
-    setVigencias(prev => {
-      const existingDias = new Set(prev.map(v => v.dia))
-      const novas: VigenciaRow[] = diasSeguintes.filter(d => !existingDias.has(d)).map(d => ({
-        key: buildKey(selectedRep!, d, `new_${Date.now()}_${d}`),
-        db_id: null, representante: selectedRep!, dia: d,
-        meta_frete_1: row.meta_frete_1, meta_frete_2: row.meta_frete_2, meta_frete_3: row.meta_frete_3,
-        margem_parbo: row.margem_parbo, margem_branco: row.margem_branco, margem_integral: row.margem_integral,
-        isNew: true, isDirty: true,
-      }))
-      const updated = prev.map(v => diasSeguintes.includes(v.dia)
-        ? { ...v, meta_frete_1: row.meta_frete_1, meta_frete_2: row.meta_frete_2, meta_frete_3: row.meta_frete_3,
-            margem_parbo: row.margem_parbo, margem_branco: row.margem_branco, margem_integral: row.margem_integral, isDirty: true }
-        : v)
-      return [...updated, ...novas].sort((a, b) => a.dia - b.dia)
-    })
-    message.success(`Valores replicados para ${diasSeguintes.length} dia(s) seguinte(s).`)
+    const existingDias = new Set(vigencias.map(v => v.dia))
+    const preferredDia = isViewingCurrentPeriod ? todayDay : 1
+    let novoDia: number
+    if (!existingDias.has(preferredDia)) {
+      novoDia = preferredDia
+    } else {
+      const maxDia = Math.max(...vigencias.map(v => v.dia))
+      novoDia = maxDia + 1
+    }
+    if (novoDia > totalDias) {
+      message.info('Não há mais dias disponíveis neste mês.')
+      return
+    }
+    setVigencias(prev => [...prev, {
+      key: buildKey(row.representante, novoDia, `new_${Date.now()}`),
+      db_id: null, representante: row.representante, dia: novoDia,
+      meta_frete_1: row.meta_frete_1, meta_frete_2: row.meta_frete_2, meta_frete_3: row.meta_frete_3,
+      margem_parbo: row.margem_parbo, margem_branco: row.margem_branco, margem_integral: row.margem_integral,
+      isNew: true, isDirty: true,
+    }].sort((a, b) => a.dia - b.dia))
+    message.success(`Valores replicados para o dia ${novoDia}.`)
   }
 
   async function deleteVigencia(row: VigenciaRow) {
@@ -319,7 +341,7 @@ function RepresentantesParamsTab() {
         if (!canEdit && !canDelete) return null
         return (
           <Space size={2}>
-            {canEdit && <Tooltip title="Replicar"><Button size="small" icon={<CopyOutlined />} type="text" onClick={() => replicarParaDiasSeguintes(row)} /></Tooltip>}
+            {canEdit && <Tooltip title="Replicar próximo dia"><Button size="small" icon={<CopyOutlined />} type="text" onClick={() => replicarParaDiaSeguinte(row)} /></Tooltip>}
             {canDelete && <Popconfirm title="Excluir?" onConfirm={() => deleteVigencia(row)} okText="Sim" cancelText="Não"><Button size="small" danger icon={<DeleteOutlined />} type="text" /></Popconfirm>}
           </Space>
         )
@@ -350,6 +372,62 @@ function RepresentantesParamsTab() {
     finally { setCopyingLast(false) }
   }
 
+  const [copiarModalOpen, setCopiarModalOpen] = useState(false)
+  const [copiarPreview, setCopiarPreview] = useState<CopiarPreviewItem[]>([])
+  const [copiarSelectedKeys, setCopiarSelectedKeys] = useState<React.Key[]>([])
+  const [copiarLoading, setCopiarLoading] = useState(false)
+  const [copiarSaving, setCopiarSaving] = useState(false)
+
+  async function openCopiarModal() {
+    setCopiarLoading(true)
+    setCopiarModalOpen(true)
+    try {
+      const { data } = await api.get<CopiarPreviewResponse>('/representantes/parametros/copiar-preview', { params: { ano, mes } })
+      setCopiarPreview(data.preview)
+      setCopiarSelectedKeys(data.preview.filter(p => !p.tem_registro_mes).map(p => p.representante))
+    } catch {
+      message.error('Erro ao buscar preview de cópia')
+      setCopiarModalOpen(false)
+    } finally { setCopiarLoading(false) }
+  }
+
+  async function confirmarCopiaEmLote() {
+    const selecionados = copiarPreview.filter(p => copiarSelectedKeys.includes(p.representante))
+    if (selecionados.length === 0) { message.info('Nenhum representante selecionado.'); return }
+    setCopiarSaving(true)
+    try {
+      const vigenciaStr = `${ano}-${String(mes).padStart(2, '0')}-01`
+      const payload = selecionados.map(p => ({
+        representante: p.representante,
+        data_vigencia: vigenciaStr,
+        meta_frete_1: p.meta_frete_1, meta_frete_2: p.meta_frete_2, meta_frete_3: p.meta_frete_3,
+        margem_parbo: p.margem_parbo, margem_branco: p.margem_branco, margem_integral: p.margem_integral,
+      }))
+      await api.put('/representantes/parametros', payload)
+      message.success(`Parâmetros copiados para ${selecionados.length} representante(s) no dia 01/${String(mes).padStart(2, '0')}/${ano}.`)
+      setCopiarModalOpen(false)
+      fetchParams()
+    } catch { message.error('Erro ao copiar parâmetros em lote') }
+    finally { setCopiarSaving(false) }
+  }
+
+  const copiarPreviewCols: ColumnsType<CopiarPreviewItem> = [
+    { title: 'Representante', dataIndex: 'representante', width: 180, ellipsis: true },
+    { title: 'Última vigência', dataIndex: 'ultima_vigencia_data', width: 120, render: (v: string) => v.split('-').reverse().join('/') },
+    { title: 'Frete 1', dataIndex: 'meta_frete_1', width: 100, render: (v: number | null) => v != null ? `R$ ${v.toFixed(2)}` : '—' },
+    { title: 'Frete 2', dataIndex: 'meta_frete_2', width: 100, render: (v: number | null) => v != null ? `R$ ${v.toFixed(2)}` : '—' },
+    { title: 'Frete 3', dataIndex: 'meta_frete_3', width: 100, render: (v: number | null) => v != null ? `R$ ${v.toFixed(2)}` : '—' },
+    { title: 'Marg P/I', dataIndex: 'margem_parbo', width: 90, render: (v: number | null) => fmtPct(v) },
+    { title: 'Marg Br', dataIndex: 'margem_branco', width: 85, render: (v: number | null) => fmtPct(v) },
+    { title: 'Marg Int', dataIndex: 'margem_integral', width: 85, render: (v: number | null) => fmtPct(v) },
+    {
+      title: 'Status', dataIndex: 'tem_registro_mes', width: 130, align: 'center',
+      render: (v: boolean) => v
+        ? <Tag color="orange">Já possui dados</Tag>
+        : <Tag color="green">Novo</Tag>,
+    },
+  ]
+
   const repOptions = ativos.map(a => ({ value: a.fantasia, label: a.codigo != null ? `${a.codigo} - ${a.fantasia}` : a.fantasia }))
   const dirtyCount = vigencias.filter(v => v.isDirty).length
   const canAddVigencia = role === 'admin' || (role === 'editor' && !isViewingPastPeriod)
@@ -368,6 +446,7 @@ function RepresentantesParamsTab() {
           </Space>
           <Space>
             <Button icon={<ReloadOutlined />} onClick={fetchParams} loading={loading} disabled={!selectedRep}>Recarregar</Button>
+            {role === 'admin' && <Button icon={<UserSwitchOutlined />} onClick={openCopiarModal}>Copiar p/ todos</Button>}
             {canSave && <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving} disabled={dirtyCount === 0}>Salvar {dirtyCount > 0 ? `(${dirtyCount})` : ''}</Button>}
           </Space>
         </Space>
@@ -403,6 +482,41 @@ function RepresentantesParamsTab() {
           </Card>
         )}
       </Spin>
+
+      <Modal
+        title={<Space><UserSwitchOutlined /><span>Copiar vigência para todos os representantes</span></Space>}
+        open={copiarModalOpen}
+        onCancel={() => setCopiarModalOpen(false)}
+        width={900}
+        footer={[
+          <Button key="cancel" onClick={() => setCopiarModalOpen(false)}>Cancelar</Button>,
+          <Button key="confirm" type="primary" loading={copiarSaving}
+            disabled={copiarSelectedKeys.length === 0}
+            onClick={confirmarCopiaEmLote}>
+            Confirmar ({copiarSelectedKeys.length} rep{copiarSelectedKeys.length !== 1 ? 's' : ''})
+          </Button>,
+        ]}
+      >
+        <Alert type="info" showIcon style={{ marginBottom: 12 }}
+          message={<span>Copiar a última vigência de cada representante para o dia <strong>01/{String(mes).padStart(2, '0')}/{ano}</strong>.</span>}
+          description="Representantes com 'Já possui dados' terão seus valores sobrescritos no dia 1 se forem selecionados." />
+        <Spin spinning={copiarLoading}>
+          <Table<CopiarPreviewItem>
+            columns={copiarPreviewCols}
+            dataSource={copiarPreview}
+            rowKey="representante"
+            size="small"
+            pagination={false}
+            bordered
+            scroll={{ y: 360 }}
+            rowSelection={{
+              selectedRowKeys: copiarSelectedKeys,
+              onChange: (keys) => setCopiarSelectedKeys(keys as React.Key[]),
+            }}
+            locale={{ emptyText: 'Nenhum representante com histórico encontrado.' }}
+          />
+        </Spin>
+      </Modal>
     </div>
   )
 }
