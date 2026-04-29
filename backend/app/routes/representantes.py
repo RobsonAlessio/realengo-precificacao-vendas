@@ -128,6 +128,19 @@ def get_ultima_vigencia_rep(
     }
 
 
+@router.get("/parametros/copiar-preview")
+def copiar_preview(
+    ano: int = Query(..., ge=2000, le=2100),
+    mes: int = Query(..., ge=1, le=12),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth_utils.get_current_user),
+):
+    """Preview de cópia em lote: retorna última vigência de cada representante
+    antes do mês alvo e se já existe registro no dia 1 desse mês."""
+    preview = representantes_service.get_copiar_preview(db, ano, mes)
+    return {"ano": ano, "mes": mes, "preview": preview}
+
+
 @router.delete("/parametros/{param_id}")
 def delete_parametro(
     param_id: int,

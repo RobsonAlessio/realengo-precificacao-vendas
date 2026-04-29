@@ -140,6 +140,50 @@ def get_params_vigentes(db: Session, representante: str, data: date) -> models.P
     )
 
 
+def get_copiar_preview(db: Session, ano: int, mes: int) -> list[dict]:
+    """Para cada representante ativo com histórico, retorna a última vigência
+    antes do mês alvo e se já existe registro no dia 1 desse mês."""
+    ativos = get_representantes_ativos()
+    if not ativos:
+        return []
+    target_date = date(ano, mes, 1)
+    result = []
+    for ativo in ativos:
+        fantasia = ativo["fantasia"].upper()
+        last = (
+            db.query(models.ParametroRepresentante)
+            .filter(
+                models.ParametroRepresentante.representante == fantasia,
+                models.ParametroRepresentante.data_vigencia < target_date,
+            )
+            .order_by(models.ParametroRepresentante.data_vigencia.desc())
+            .first()
+        )
+        if not last:
+            continue
+        existing = (
+            db.query(models.ParametroRepresentante)
+            .filter(
+                models.ParametroRepresentante.representante == fantasia,
+                models.ParametroRepresentante.data_vigencia == target_date,
+            )
+            .first()
+        )
+        result.append({
+            "representante": fantasia,
+            "codigo_representante": ativo.get("codigo"),
+            "ultima_vigencia_data": last.data_vigencia.isoformat(),
+            "meta_frete_1": float(last.meta_frete_1) if last.meta_frete_1 is not None else None,
+            "meta_frete_2": float(last.meta_frete_2) if last.meta_frete_2 is not None else None,
+            "meta_frete_3": float(last.meta_frete_3) if last.meta_frete_3 is not None else None,
+            "margem_parbo": float(last.margem_parbo) if last.margem_parbo is not None else None,
+            "margem_branco": float(last.margem_branco) if last.margem_branco is not None else None,
+            "margem_integral": float(last.margem_integral) if last.margem_integral is not None else None,
+            "tem_registro_mes": existing is not None,
+        })
+    return result
+
+
 def upsert_parametros(db: Session, items: list[dict]) -> int:
     """Salva (upsert) lista de parâmetros. Retorna quantidade de registros salvos."""
     codigos = _codigo_por_fantasia()
